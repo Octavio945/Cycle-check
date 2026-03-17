@@ -6,12 +6,14 @@ import { useTheme } from '@/components/ui/ThemeProvider';
 import ThemeToggle from '@/components/ui/ThemeToggle';
 import { useStore } from '@/store/useStore';
 import { useState, useRef } from 'react';
+import { cleanDuplicateData } from '@/lib/dataMigration';
 
 export default function SettingsPage() {
   const { theme, toggleTheme } = useTheme();
   const store = useStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [cleanStatus, setCleanStatus] = useState<'idle' | 'cleaning' | 'success' | 'error' | 'none'>('idle');
 
   // --- EXPORT ---
   const handleExport = () => {
@@ -61,6 +63,26 @@ export default function SettingsPage() {
     reader.readAsText(file);
     // Reset l'input pour pouvoir ré-importer le même fichier si besoin
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // --- Nettoyage des Données ---
+  const handleCleanData = () => {
+    setCleanStatus('cleaning');
+    try {
+      const result = cleanDuplicateData(store);
+      if (result.modified) {
+        store.importData({
+          baseParts: result.newBaseParts,
+          bikes: result.newBikes
+        });
+      }
+      setCleanStatus('success');
+      setTimeout(() => setCleanStatus('idle'), 3000);
+    } catch (err) {
+      console.error("Erreur lors du nettoyage:", err);
+      setCleanStatus('error' as const);
+      setTimeout(() => setCleanStatus('idle'), 3000);
+    }
   };
 
   return (
@@ -124,7 +146,7 @@ export default function SettingsPage() {
         {/* Données & Sauvegarde */}
         <section>
           <h2 className="text-xs font-semibold text-[var(--cc-text-faint)] uppercase tracking-wider mb-2 ml-1 flex items-center gap-2">
-            Sécurité des données <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+            Sécurité &amp; Données <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
           </h2>
           <div className="bg-[var(--cc-surface)] rounded-2xl overflow-hidden shadow-[var(--cc-shadow-sm)] border border-[var(--cc-border)] divide-y divide-[var(--cc-border)]">
             
@@ -140,6 +162,29 @@ export default function SettingsPage() {
                 <span className="block font-medium text-[var(--cc-text)]">Exporter et Sauvegarder</span>
                 <span className="block text-xs text-[var(--cc-text-muted)] mt-0.5">
                   Télécharger vos données sur cet appareil (.json)
+                </span>
+              </div>
+            </button>
+
+            {/* Nettoyer doublons */}
+            <button
+              onClick={handleCleanData}
+              disabled={cleanStatus === 'cleaning'}
+              className="w-full flex items-center gap-4 p-4 hover:bg-[var(--cc-border-subtle)] transition-colors text-left"
+            >
+              <div className="bg-violet-100 dark:bg-violet-900/40 p-2 rounded-lg">
+                <List className="w-5 h-5 text-violet-600 dark:text-violet-500" />
+              </div>
+              <div className="flex-1">
+                <span className="block font-medium text-[var(--cc-text)]">Nettoyer les données</span>
+                <span className="block text-xs text-[var(--cc-text-muted)] mt-0.5">
+                  {cleanStatus === 'success' ? (
+                    <span className="text-green-600 dark:text-green-500 font-medium">✅ Pièces fusionnées !</span>
+                  ) : cleanStatus === 'cleaning' ? (
+                    <span className="text-violet-600 font-medium">Nettoyage en cours...</span>
+                  ) : (
+                    "Corrige et fusionne les noms de pièces en vrac"
+                  )}
                 </span>
               </div>
             </button>

@@ -4,6 +4,7 @@ import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Bike, BikePart } from '../types';
+import { PART_PRICES } from './dataMigration';
 
 type ReportType = 'repair' | 'replace' | 'global' | 'shopping';
 
@@ -426,10 +427,19 @@ export const generateDevisReport = (bikes: Bike[]) => {
   );
 
   // Construction du tableau 2
+  let globalTotalFinancial = 0;
+
   const body2: (string | { content: string; styles?: object })[][] = allPartNames.map(partName => {
     const repairCount  = bikes.filter(b => b.parts.find((p: BikePart) => p.name === partName && p.status === 'repair')).length;
     const replaceCount = bikes.filter(b => b.parts.find((p: BikePart) => p.name === partName && p.status === 'replace')).length;
     const total = repairCount + replaceCount;
+
+    const unitPrice = PART_PRICES[partName];
+    const amountTotal = unitPrice ? total * unitPrice : null;
+
+    if (amountTotal) {
+      globalTotalFinancial += amountTotal;
+    }
 
     return [
       { content: partName, styles: { fontStyle: 'bold', textColor: COLORS.slate800 } },
@@ -445,8 +455,8 @@ export const generateDevisReport = (bikes: Bike[]) => {
         content: total > 0 ? total.toString() : '—',
         styles: { fontStyle: 'bold', textColor: total > 0 ? COLORS.slate800 : COLORS.slate300, halign: 'center' as const }
       },
-      '',  // Prix Unitaire — vide (à remplir manuellement)
-      '',  // Montant Total  — vide (à remplir manuellement)
+      unitPrice ? { content: `${unitPrice} FCFA`, styles: { halign: 'center' as const } } : '',
+      amountTotal ? { content: `${amountTotal} FCFA`, styles: { fontStyle: 'bold', halign: 'center' as const } } : '',
     ];
   });
 
@@ -460,12 +470,12 @@ export const generateDevisReport = (bikes: Bike[]) => {
     { content: totalReplaces > 0 ? totalReplaces.toString() : '—', styles: { fontStyle: 'bold', textColor: COLORS.danger,  halign: 'center' as const } },
     { content: (totalRepairs + totalReplaces).toString(), styles: { fontStyle: 'bold', textColor: COLORS.slate800, halign: 'center' as const } },
     '',
-    '',
+    { content: globalTotalFinancial > 0 ? `${globalTotalFinancial} FCFA` : '', styles: { fontStyle: 'bold', textColor: COLORS.primary, halign: 'center' as const } },
   ]);
 
   autoTable(doc, {
     startY: 52,
-    head: [['Pièce', 'Qté à Réparer', 'Qté à Remplacer', 'Total Interventions', 'Prix Unitaire (€)', 'Montant Total (€)']],
+    head: [['Pièce', 'Qté à Réparer', 'Qté à Remplacer', 'Total Interventions', 'Prix Unitaire (FCFA)', 'Montant Total (FCFA)']],
     body: body2,
     theme: 'grid',
     headStyles: {
@@ -501,7 +511,117 @@ export const generateDevisReport = (bikes: Bike[]) => {
     didDrawPage: drawFooter,
   });
 
-  // ── 5. Sauvegarde ─────────────────────────────────────────────────────────
+  // ── 5. TABLEAU 3 : Coût par Vélo (nouvelle page) ───────────────────────────
+  doc.addPage();
+  drawHeader();
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(...COLORS.slate800);
+  doc.text('Tableau 3 — Coût des interventions par Vélo', 14, 40);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(...COLORS.slate500);
+  doc.text(
+    "Coût estimé (FCFA) par vélo selon les interventions demandées et le dictionnaire de prix défini.",
+    14, 47
+  );
+
+  const body3: (string | { content: string; styles?: object; colSpan?: number })[][] = [];
+  let totalBikesReplaceCost = 0;
+  let totalBikesRepairCost  = 0;
+
+  bikes.forEach(bike => {
+    let replaceCount = 0;
+    let repairCount = 0;
+    let costReplace = 0;
+    let costRepair = 0;
+
+    bike.parts.forEach((p: BikePart) => {
+      if (p.status === 'replace') {
+        replaceCount++;
+        costReplace += (PART_PRICES[p.name] || 0);
+      } else if (p.status === 'repair') {
+        repairCount++;
+        costRepair += (PART_PRICES[p.name] || 0);
+      }
+    });
+
+    if (replaceCount > 0 || repairCount > 0) {
+      totalBikesReplaceCost += costReplace;
+      totalBikesRepairCost  += costRepair;
+
+      let costStr = '';
+      if (costReplace > 0) {
+        costStr = `${costReplace} FCFA`;
+      } else if (costReplace === 0 && costRepair === 0) {
+        costStr = '—';
+      }
+      
+      // User requested format: "lors il y a des vélo sui on des trucs a reparer on aura le prix ... entre parenthese (plus le pris des piece a reparer )"
+      if (costRepair > 0) {
+        costStr += costStr ? ` (plus ${costRepair} FCFA pour les pièces à réparer)` : `(plus ${costRepair} FCFA pour les pièces à réparer)`;
+      }
+
+      body3.push([
+        { content: bike.id, styles: { fontStyle: 'bold', textColor: COLORS.primary } },
+        { content: replaceCount > 0 ? replaceCount.toString() : '—', styles: { textColor: replaceCount > 0 ? COLORS.danger : COLORS.slate300, halign: 'center' as const, fontStyle: replaceCount > 0 ? 'bold' : 'normal' } },
+        { content: repairCount > 0 ? repairCount.toString() : '—', styles: { textColor: repairCount > 0 ? COLORS.warning : COLORS.slate300, halign: 'center' as const, fontStyle: repairCount > 0 ? 'bold' : 'normal' } },
+        { content: costStr, styles: { fontStyle: 'bold', textColor: COLORS.slate800, halign: 'center' as const } }
+      ]);
+    }
+  });
+
+  if (body3.length === 0) {
+    body3.push([
+      { content: "Aucune intervention estimable sur les vélos", colSpan: 4, styles: { halign: 'center' as const, textColor: COLORS.slate500 } }
+    ]);
+    // Remplir une ligne factice pour que le tableau ne plante pas
+  } else {
+    let totalCostStr = `${totalBikesReplaceCost} FCFA`;
+    if (totalBikesRepairCost > 0) {
+       totalCostStr += ` (plus ${totalBikesRepairCost} FCFA pour les pièces à réparer)`;
+    }
+
+    body3.push([
+      { content: 'TOTAL GÉNÉRAL', styles: { fontStyle: 'bold', textColor: COLORS.slate800 } },
+      { content: totalReplaces.toString(), styles: { fontStyle: 'bold', textColor: COLORS.danger, halign: 'center' as const } },
+      { content: totalRepairs.toString(), styles: { fontStyle: 'bold', textColor: COLORS.warning, halign: 'center' as const } },
+      { content: totalCostStr, styles: { fontStyle: 'bold', textColor: COLORS.primary, halign: 'center' as const } }
+    ]);
+  }
+
+  autoTable(doc, {
+    startY: 52,
+    head: [['Vélo', 'Nb Pièces à Remplacer', 'Nb Pièces à Réparer', "Coût estimé"]],
+    body: body3 as any,
+    theme: 'grid',
+    headStyles: {
+      fillColor: COLORS.slate800,
+      textColor: 255 as unknown as [number, number, number],
+      fontStyle: 'bold',
+      fontSize: 9,
+      halign: 'center',
+      valign: 'middle',
+    },
+    styles: { cellPadding: 5, fontSize: 9, valign: 'middle', lineColor: COLORS.slate300, lineWidth: 0.2, font: 'helvetica' },
+    alternateRowStyles: { fillColor: [248, 250, 252] as [number, number, number] },
+    columnStyles: {
+      0: { cellWidth: 40 },
+      1: { cellWidth: 45, halign: 'center' },
+      2: { cellWidth: 45, halign: 'center' },
+      3: { cellWidth: 125, halign: 'center' },
+    },
+    didParseCell: function(data) {
+      if (body3.length > 1 && data.row.index === body3.length - 1 && data.section === 'body') {
+        data.cell.styles.fillColor = [241, 245, 249] as [number, number, number];
+      }
+    },
+    didDrawPage: drawFooter,
+  });
+
+  // ── 6. Sauvegarde ─────────────────────────────────────────────────────────
   const fileName = `CycleCheck_Devis_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`;
   doc.save(fileName);
 };
