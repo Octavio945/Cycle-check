@@ -32,6 +32,8 @@ export interface AppState {
   addBike: (id: string, photoUrl?: string) => void;
   updateBike: (bike: Bike) => void;
   removeBike: (id: string) => void;
+  // Sauvegarde / Restauration
+  importData: (data: Partial<AppState>) => void;
   
   // Réinitialisation (utilitaire)
   resetStore: () => void;

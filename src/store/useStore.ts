@@ -80,6 +80,13 @@ export const useStore = create<AppState>()(
           bikes: state.bikes.filter((bike) => bike.id !== id),
         })),
 
+      importData: (data) => 
+        set((state) => ({
+          ...state,
+          ...(data.baseParts ? { baseParts: data.baseParts } : {}),
+          ...(data.bikes ? { bikes: data.bikes } : {}),
+        })),
+
       resetStore: () => set({ baseParts: DEFAULT_BASE_PARTS, bikes: [] }),
     }),
     {
