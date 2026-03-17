@@ -1,15 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, FileOutput, Wrench, PenTool, ClipboardList, ShoppingCart, Receipt } from 'lucide-react';
+import { ArrowLeft, FileOutput, Wrench, PenTool, ClipboardList, ShoppingCart, Receipt, ListOrdered, Trophy } from 'lucide-react';
 import { useStore } from '@/store/useStore';
-import { generatePDFReport, generateDevisReport } from '@/lib/pdfService';
+import { generatePDFReport, generateDevisReport, generateCostRankingReport } from '@/lib/pdfService';
 import { useState } from 'react';
 import ThemeToggle from '@/components/ui/ThemeToggle';
 
 export default function ReportsPage() {
   const bikes = useStore((state) => state.bikes);
-  const [generating, setGenerating] = useState<'repair' | 'replace' | 'global' | 'shopping' | 'devis' | null>(null);
+  const [generating, setGenerating] = useState<'repair' | 'replace' | 'global' | 'shopping' | 'devis' | 'cost_all' | 'cost_top20' | null>(null);
 
   const bikesTotal = bikes.length;
   const bikesWithRepair  = bikes.filter(b => b.parts.some(p => p.status === 'repair')).length;
@@ -28,6 +28,15 @@ export default function ReportsPage() {
     setGenerating('devis');
     try {
       generateDevisReport(bikes);
+    } finally {
+      setTimeout(() => setGenerating(null), 1000);
+    }
+  };
+
+  const handleGenerateCostRanking = async (top20: boolean) => {
+    setGenerating(top20 ? 'cost_top20' : 'cost_all');
+    try {
+      generateCostRankingReport(bikes, top20 ? 20 : undefined);
     } finally {
       setTimeout(() => setGenerating(null), 1000);
     }
@@ -149,27 +158,53 @@ export default function ReportsPage() {
             )}
           </div>
         </button>
-        {/* Rapport Tableau de Devis */}
+
+        {/* Classement des Coûts (Tous) */}
         <button
-          onClick={handleGenerateDevis}
+          onClick={() => handleGenerateCostRanking(false)}
           disabled={generating !== null}
-          className="w-full bg-[var(--cc-surface)] p-5 rounded-2xl shadow-[var(--cc-shadow-sm)] border-2 border-[var(--cc-border)] hover:border-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/30 active:scale-[0.98] transition-all group text-left relative overflow-hidden flex items-center justify-between disabled:opacity-70"
+          className="w-full bg-[var(--cc-surface)] p-5 rounded-2xl shadow-[var(--cc-shadow-sm)] border-2 border-[var(--cc-border)] hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 active:scale-[0.98] transition-all group text-left relative overflow-hidden flex items-center justify-between disabled:opacity-70"
         >
-          <div className="absolute top-0 right-0 w-28 h-28 bg-violet-100 dark:bg-violet-900 rounded-bl-full opacity-40 group-hover:scale-110 transition-transform -z-0" />
+          <div className="absolute top-0 right-0 w-28 h-28 bg-blue-100 dark:bg-blue-900 rounded-bl-full opacity-40 group-hover:scale-110 transition-transform -z-0" />
           <div className="relative z-10 flex items-center gap-4">
-            <div className="bg-violet-100 dark:bg-violet-900/50 p-3 rounded-xl">
-              <Receipt className="w-6 h-6 text-violet-600 dark:text-violet-400" />
+            <div className="bg-blue-100 dark:bg-blue-900/50 p-3 rounded-xl">
+              <ListOrdered className="w-6 h-6 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h2 className="font-bold text-[var(--cc-text)] text-base">Tableau de Devis</h2>
-              <p className="text-sm text-[var(--cc-text-muted)]">Matrice vélos × pièces avec prix à remplir</p>
+              <h2 className="font-bold text-[var(--cc-text)] text-base">Classement des Coûts</h2>
+              <p className="text-sm text-[var(--cc-text-muted)]">Tous les vélos triés du moins cher au plus cher</p>
             </div>
           </div>
           <div className="relative z-10">
-            {generating === 'devis' ? (
-              <span className="text-xs text-violet-600 font-medium animate-pulse">Génération...</span>
+            {generating === 'cost_all' ? (
+              <span className="text-xs text-blue-600 font-medium animate-pulse">Génération...</span>
             ) : (
-              <FileOutput className="w-5 h-5 text-violet-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+              <FileOutput className="w-5 h-5 text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+            )}
+          </div>
+        </button>
+
+        {/* Top 20 Moins Coûteux */}
+        <button
+          onClick={() => handleGenerateCostRanking(true)}
+          disabled={generating !== null}
+          className="w-full bg-[var(--cc-surface)] p-5 rounded-2xl shadow-[var(--cc-shadow-sm)] border-2 border-[var(--cc-border)] hover:border-yellow-400 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 active:scale-[0.98] transition-all group text-left relative overflow-hidden flex items-center justify-between disabled:opacity-70"
+        >
+          <div className="absolute top-0 right-0 w-28 h-28 bg-yellow-100 dark:bg-yellow-900/40 rounded-bl-full opacity-40 group-hover:scale-110 transition-transform -z-0" />
+          <div className="relative z-10 flex items-center gap-4">
+            <div className="bg-yellow-100 dark:bg-yellow-900/50 p-3 rounded-xl">
+              <Trophy className="w-6 h-6 text-yellow-600 dark:text-yellow-500" />
+            </div>
+            <div>
+              <h2 className="font-bold text-[var(--cc-text)] text-base">Top 20 Vélos Économiques</h2>
+              <p className="text-sm text-[var(--cc-text-muted)]">Les 20 vélos les moins chers à réparer</p>
+            </div>
+          </div>
+          <div className="relative z-10">
+            {generating === 'cost_top20' ? (
+              <span className="text-xs text-yellow-600 font-medium animate-pulse">Génération...</span>
+            ) : (
+              <FileOutput className="w-5 h-5 text-yellow-600 opacity-0 group-hover:opacity-100 transition-opacity" />
             )}
           </div>
         </button>

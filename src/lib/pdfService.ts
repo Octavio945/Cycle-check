@@ -6,7 +6,7 @@ import { fr } from 'date-fns/locale';
 import { Bike, BikePart } from '../types';
 import { PART_PRICES } from './dataMigration';
 
-type ReportType = 'repair' | 'replace' | 'global' | 'shopping';
+type ReportType = 'repair' | 'replace' | 'global' | 'shopping' | 'devis';
 
 // --- Couleurs de la charte ---
 const COLORS = {
@@ -623,5 +623,178 @@ export const generateDevisReport = (bikes: Bike[]) => {
 
   // ── 6. Sauvegarde ─────────────────────────────────────────────────────────
   const fileName = `CycleCheck_Devis_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`;
+  doc.save(fileName);
+};
+
+// ---------------------------------------------------------------------------
+// Nouveaux Rapports : Classement des Coûts
+// ---------------------------------------------------------------------------
+export const generateCostRankingReport = (bikes: Bike[], limit?: number) => {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  // Helpers similaires
+  const drawHeader = () => {
+    doc.setFillColor(...COLORS.slate800);
+    doc.rect(0, 0, 210, 20, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text('CycleCheck', 14, 13);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    const dateStr = format(new Date(), 'dd MMMM yyyy - HH:mm', { locale: fr });
+    const rightAlignId = doc.getStringUnitWidth(`Généré le: ${dateStr}`) * 10 / doc.internal.scaleFactor;
+    doc.text(`Généré le: ${dateStr}`, 210 - 14 - rightAlignId, 13);
+  };
+
+  const drawFooter = (data: any) => {
+    const pageCount = (doc.internal as any).getNumberOfPages();
+    doc.setFontSize(8);
+    doc.setTextColor(...COLORS.slate500);
+    doc.text(
+      `Page ${data.pageNumber} / ${pageCount}`,
+      data.settings.margin.left,
+      doc.internal.pageSize.height - 10
+    );
+  };
+
+  drawHeader();
+
+  const title = limit ? `Top ${limit} — Vélos les Moins Coûteux (Réparations)` : 'Classement Complet des Coûts de Réparation';
+  
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.setTextColor(...COLORS.slate800);
+  doc.text(title, 14, 35);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.setTextColor(...COLORS.slate500);
+  doc.text(
+    limit 
+      ? `Liste des ${limit} vélos ayant besoin d'interventions, triée du moins cher au plus cher.`
+      : "Liste de tous les vélos ayant besoin d'interventions, triée du moins cher au plus cher.",
+    14, 42
+  );
+
+  // 1. Calculer les coûts pour chaque vélo
+  let bikeCosts = bikes.map(bike => {
+    let replaceCount = 0;
+    let repairCount = 0;
+    let costReplace = 0;
+    let costRepair = 0;
+
+    bike.parts.forEach((p: BikePart) => {
+      if (p.status === 'replace') {
+        replaceCount++;
+        costReplace += (PART_PRICES[p.name] || 0);
+      } else if (p.status === 'repair') {
+        repairCount++;
+        costRepair += (PART_PRICES[p.name] || 0);
+      }
+    });
+
+    const totalCost = costReplace + costRepair;
+    return {
+      id: bike.id,
+      replaceCount,
+      repairCount,
+      costReplace,
+      costRepair,
+      totalCost
+    };
+  });
+
+  // 2. Filtrer les vélos sans intervention (totalCost === 0 n'est pas suffisant si tout est sans prix, 
+  // on vérifie plutôt qu'il y a au moins une pièce à changer ou réparer)
+  bikeCosts = bikeCosts.filter(b => b.replaceCount > 0 || b.repairCount > 0);
+
+  // 3. Trier du moins cher au plus cher
+  bikeCosts.sort((a, b) => a.totalCost - b.totalCost);
+
+  // 4. Limiter au Top X si demandé
+  if (limit) {
+    bikeCosts = bikeCosts.slice(0, limit);
+  }
+
+  const body: (string | { content: string; styles?: object; colSpan?: number })[][] = [];
+  let sumAllShown = 0;
+  let sumReplaceAll = 0;
+  let sumRepairAll = 0;
+
+  bikeCosts.forEach((b, index) => {
+    sumAllShown += b.totalCost;
+    sumReplaceAll += b.replaceCount;
+    sumRepairAll += b.repairCount;
+
+    let costStr = '';
+    if (b.costReplace > 0) {
+      costStr = `${b.costReplace} FCFA`;
+    } else if (b.costReplace === 0 && b.costRepair === 0) {
+      costStr = 'Prix Inconnu';
+    }
+    
+    if (b.costRepair > 0) {
+      costStr += costStr ? ` (plus ${b.costRepair} FCFA pour réparer)` : `(plus ${b.costRepair} FCFA pour réparer)`;
+    }
+
+    body.push([
+      { content: `#${index + 1}`, styles: { textColor: COLORS.slate500, fontStyle: 'bold' } },
+      { content: b.id, styles: { fontStyle: 'bold', textColor: COLORS.primary } },
+      { content: b.replaceCount > 0 ? b.replaceCount.toString() : '—', styles: { textColor: b.replaceCount > 0 ? COLORS.danger : COLORS.slate300, halign: 'center' as const } },
+      { content: b.repairCount > 0 ? b.repairCount.toString() : '—', styles: { textColor: b.repairCount > 0 ? COLORS.warning : COLORS.slate300, halign: 'center' as const } },
+      { content: costStr, styles: { fontStyle: 'bold', textColor: COLORS.slate800, halign: 'right' as const } }
+    ]);
+  });
+
+  if (body.length === 0) {
+    body.push([
+      { content: "Aucun vélo ne nécessite d'intervention estimable.", colSpan: 5, styles: { halign: 'center' as const, textColor: COLORS.slate500 } }
+    ]);
+  } else {
+    body.push([
+      { content: `TOTAL (${body.length} Vélos)`, colSpan: 2, styles: { fontStyle: 'bold', textColor: COLORS.slate800 } },
+      { content: sumReplaceAll.toString(), styles: { fontStyle: 'bold', textColor: COLORS.danger, halign: 'center' as const } },
+      { content: sumRepairAll.toString(), styles: { fontStyle: 'bold', textColor: COLORS.warning, halign: 'center' as const } },
+      { content: `${sumAllShown} FCFA`, styles: { fontStyle: 'bold', textColor: COLORS.primary, halign: 'right' as const } }
+    ]);
+  }
+
+  autoTable(doc, {
+    startY: 50,
+    head: [['N°', 'Vélo', 'Pièces à Remplacer', 'Pièces à Réparer', "Coût estimé"]],
+    body: body as any,
+    theme: 'grid',
+    headStyles: {
+      fillColor: COLORS.slate800,
+      textColor: 255 as unknown as [number, number, number],
+      fontStyle: 'bold',
+      fontSize: 9,
+      halign: 'center',
+      valign: 'middle',
+    },
+    styles: { cellPadding: 5, fontSize: 9, valign: 'middle', lineColor: COLORS.slate300, lineWidth: 0.2, font: 'helvetica' },
+    alternateRowStyles: { fillColor: [248, 250, 252] as [number, number, number] },
+    columnStyles: {
+      0: { cellWidth: 15, halign: 'center' },
+      1: { cellWidth: 40 },
+      2: { cellWidth: 35, halign: 'center' },
+      3: { cellWidth: 35, halign: 'center' },
+      4: { cellWidth: 55, halign: 'right' },
+    },
+    didParseCell: function(data) {
+      if (body.length > 1 && data.row.index === body.length - 1 && data.section === 'body') {
+        data.cell.styles.fillColor = [241, 245, 249] as [number, number, number];
+      }
+    },
+    didDrawPage: drawFooter,
+  });
+
+  const prefix = limit ? `CycleCheck_Top${limit}` : 'CycleCheck_Classement_Couts';
+  const fileName = `${prefix}_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`;
   doc.save(fileName);
 };
