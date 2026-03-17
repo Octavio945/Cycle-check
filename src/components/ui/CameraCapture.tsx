@@ -55,12 +55,31 @@ export default function CameraCapture({ onCapture, onClose }: CameraCaptureProps
     if (!videoRef.current || !canvasRef.current) return;
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
+    
+    // --- COMPRESSION D'IMAGE POUR SAUVER LE QUOTA LOCALSTORAGE ---
+    const MAX_WIDTH = 800; // Largeur maximale cible (suffisant HD)
+    let width = video.videoWidth;
+    let height = video.videoHeight;
+    
+    // Si l'image est trop grande, on calcule la nouvelle hauteur pour garder le ratio
+    if (width > MAX_WIDTH) {
+      height = Math.round((height * MAX_WIDTH) / width);
+      width = MAX_WIDTH;
+    }
+
+    canvas.width = width;
+    canvas.height = height;
+    
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.drawImage(video, 0, 0);
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+    
+    // Dessiner en redimensionnant
+    ctx.drawImage(video, 0, 0, width, height);
+    
+    // Convertir en JPEG fortement compressé (0.6 réduit considérablement le poids Base64)
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.6);
+    // -----------------------------------------------------------
+
     setSnapshot(dataUrl);
     // Pauser le flux pendant l'aperçu
     streamRef.current?.getTracks().forEach(t => t.enabled = false);

@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Bike, BikePart } from '../types';
 
-type ReportType = 'repair' | 'replace';
+type ReportType = 'repair' | 'replace' | 'global';
 
 // --- Couleurs de la charte ---
 const COLORS = {
@@ -21,7 +21,8 @@ export const generatePDFReport = (bikes: Bike[], type: ReportType) => {
   const dateStr = format(new Date(), 'dd MMMM yyyy à HH:mm', { locale: fr });
   
   const isRepair = type === 'repair';
-  const accentColor = isRepair ? COLORS.warning : COLORS.danger;
+  const isGlobal = type === 'global';
+  const accentColor = isGlobal ? COLORS.primary : (isRepair ? COLORS.warning : COLORS.danger);
 
   // --- 1. En-tête (Header) Logo & Branding ---
   doc.setFont('helvetica', 'bold');
@@ -43,7 +44,9 @@ export const generatePDFReport = (bikes: Bike[], type: ReportType) => {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
   doc.setTextColor(...COLORS.slate800);
-  const title = isRepair ? 'Rapport : Vélos à Réparer' : 'Rapport : Pièces à Remplacer';
+  const title = isGlobal 
+    ? 'Inventaire Global de la Flotte'
+    : (isRepair ? 'Rapport : Vélos à Réparer' : 'Rapport : Pièces à Remplacer');
   doc.text(title, 14, 38);
 
   // Date alignée à droite
@@ -57,9 +60,14 @@ export const generatePDFReport = (bikes: Bike[], type: ReportType) => {
   doc.setFontSize(11);
   doc.setTextColor(...COLORS.slate500);
   
-  const descriptionText = isRepair
-    ? "Ce document recense l'ensemble de la flotte nécessitant des interventions de maintenance (réparations modérées). Il détaille les vélos concernés ainsi que la liste exhaustive des pièces à réviser pour faciliter la prise en charge par l'équipe technique."
-    : "Ce document recense l'ensemble de la flotte nécessitant le remplacement critique de pièces. Il liste les éléments défectueux devant être obligatoirement changés par l'équipe technique pour assurer la sécurité et le maintien du service.";
+  let descriptionText = "";
+  if (isGlobal) {
+    descriptionText = "Ce document constitue l'inventaire complet de la flotte de vélos. Il recense l'ensemble des équipements enregistrés ainsi qu'un aperçu technique de leur état de fonctionnement actuel.";
+  } else if (isRepair) {
+    descriptionText = "Ce document recense l'ensemble de la flotte nécessitant des interventions de maintenance (réparations modérées). Il détaille les vélos concernés ainsi que la liste exhaustive des pièces à réviser pour faciliter la prise en charge par l'équipe technique.";
+  } else {
+    descriptionText = "Ce document recense l'ensemble de la flotte nécessitant le remplacement critique de pièces. Il liste les éléments défectueux devant être obligatoirement changés par l'équipe technique pour assurer la sécurité et le maintien du service.";
+  }
   
   // splitTextToSize permet de gérer le retour à la ligne automatique (largeur max = 182)
   const splittedDescription = doc.splitTextToSize(descriptionText, 182);
@@ -69,21 +77,31 @@ export const generatePDFReport = (bikes: Bike[], type: ReportType) => {
   const tableData: string[][] = [];
   
   bikes.forEach(bike => {
-    // Filtrer les pièces selon le type du rapport
-    const concernedParts = bike.parts.filter(p => p.status === type);
-    
-    if (concernedParts.length > 0) {
-      const partsText = concernedParts.map(p => 
-        `• ${p.name} ${p.isSpecific ? '(Ajout spécifique)' : ''}`
-      ).join('\n');
+    if (isGlobal) {
+      // Rapport global : on prend tous les vélos et on fait un résumé de l'état
+      const replaceCount = bike.parts.filter(p => p.status === 'replace').length;
+      const repairCount = bike.parts.filter(p => p.status === 'repair').length;
       
+      let statusSummary = "Bon état général";
+      if (replaceCount > 0 && repairCount > 0) statusSummary = `${replaceCount} pièce(s) à remplacer, ${repairCount} à réparer`;
+      else if (replaceCount > 0) statusSummary = `${replaceCount} pièce(s) à remplacer`;
+      else if (repairCount > 0) statusSummary = `${repairCount} pièce(s) à réparer`;
+
       const lastUpdate = format(new Date(bike.updatedAt), 'dd/MM/yyyy HH:mm');
+      tableData.push([bike.id, statusSummary, lastUpdate]);
+
+    } else {
+      // Rapport spécifique (Repair ou Replace)
+      const concernedParts = bike.parts.filter(p => p.status === type);
       
-      tableData.push([
-        bike.id,
-        partsText,
-        lastUpdate
-      ]);
+      if (concernedParts.length > 0) {
+        const partsText = concernedParts.map(p => 
+          `• ${p.name} ${p.isSpecific ? '(Ajout spécifique)' : ''}`
+        ).join('\n');
+        
+        const lastUpdate = format(new Date(bike.updatedAt), 'dd/MM/yyyy HH:mm');
+        tableData.push([bike.id, partsText, lastUpdate]);
+      }
     }
   });
 
@@ -93,7 +111,7 @@ export const generatePDFReport = (bikes: Bike[], type: ReportType) => {
   if (tableData.length > 0) {
     autoTable(doc, {
       startY: startYForTable,
-      head: [['Identifiant du Vélo', 'Détail des pièces concernées', 'Dernière MAJ']],
+      head: [['Identifiant du Vélo', isGlobal ? 'État Général' : 'Détail des pièces concernées', 'Dernière MAJ']],
       body: tableData,
       theme: 'grid',
       headStyles: {
@@ -146,6 +164,7 @@ export const generatePDFReport = (bikes: Bike[], type: ReportType) => {
   }
 
   // --- 6. Sauvegarde du fichier ---
-  const fileName = `CycleCheck_${type === 'repair' ? 'Reparation' : 'Remplacement'}_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`;
+  const typeName = isGlobal ? 'Global' : (isRepair ? 'Reparation' : 'Remplacement');
+  const fileName = `CycleCheck_${typeName}_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`;
   doc.save(fileName);
 };

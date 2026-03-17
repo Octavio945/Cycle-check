@@ -31,9 +31,19 @@ export const useStore = create<AppState>()(
 
       updateBasePart: (id, name) =>
         set((state) => ({
+          // 1. Mise à jour dans le dictionnaire des pièces de base
           baseParts: state.baseParts.map((part) =>
             part.id === id ? { ...part, name } : part
           ),
+          // 2. Synchronisation sur tous les vélos déjà existants 
+          // (ne touche pas au statut, ne casse pas les objets, rétrocompatible)
+          bikes: state.bikes.map((bike) => ({
+            ...bike,
+            parts: bike.parts.map((p) => 
+              // Si la pièce correspond à l'ID de la pièce modifiée
+              (!p.isSpecific && p.id === id) ? { ...p, name } : p
+            )
+          }))
         })),
 
       addBike: (bikeId, photoUrl) =>
