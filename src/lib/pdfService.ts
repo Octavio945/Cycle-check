@@ -262,111 +262,157 @@ export const generateDevisReport = (bikes: Bike[]) => {
 
   drawHeader();
 
-  // ── 3. TABLEAU 1 : Matrice d'état (vélos × pièces) ────────────────────────
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(12);
-  doc.setTextColor(...COLORS.slate800);
-  doc.text('Tableau 1 — État des interventions par vélo', 14, 40);
+  // ── 3. TABLEAU 1 : Matrice d'état (vélos × pièces) — en tranches si besoin ─
+  //
+  // Calcul du nombre max de pièces par tranche pour rester dans la largeur utile
+  // Page paysage A4 : zone utile ≈ 269 mm ; colonne "Vélo" = 28 mm
+  // Chaque pièce = 2 colonnes (Action 22 mm + Type 16 mm) = 38 mm par pièce
+  const USABLE_W   = 269;
+  const BIKE_COL_W = 28;
+  const ACTION_W   = 22;
+  const TYPE_W     = 16;
+  const PART_GROUP_W     = ACTION_W + TYPE_W; // 38 mm
+  const MAX_PARTS_PER_CHUNK = Math.max(1, Math.floor((USABLE_W - BIKE_COL_W) / PART_GROUP_W)); // ≈ 6
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.setTextColor(...COLORS.slate500);
-  doc.text('Pour chaque vélo, les actions sélectionnées (Réparer / Remplacer) sont indiquées par pièce.', 14, 47);
+  // Découpage des pièces en tranches
+  const partChunks: string[][] = [];
+  for (let i = 0; i < allPartNames.length; i += MAX_PARTS_PER_CHUNK) {
+    partChunks.push(allPartNames.slice(i, i + MAX_PARTS_PER_CHUNK));
+  }
+  if (partChunks.length === 0) partChunks.push([]);
 
-  // En-tête à 2 niveaux
-  const head1: string[] = ['Vélo'];
-  const head2: string[] = [''];
-  allPartNames.forEach(name => {
-    const shortName = name.length > 16 ? name.substring(0, 15) + '…' : name;
-    head1.push(shortName, '');
-    head2.push('Action', 'Type');
-  });
+  partChunks.forEach((chunk, chunkIndex) => {
+    // Titre de section (header de page pour chaque tranche)
+    if (chunkIndex === 0) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...COLORS.slate800);
+      doc.text('Tableau 1 — État des interventions par vélo', 14, 40);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(...COLORS.slate500);
+      const suffix = partChunks.length > 1 ? ` (partie 1/${partChunks.length})` : '';
+      doc.text(
+        `Pour chaque vélo, les actions sélectionnées (Réparer / Remplacer) sont indiquées par pièce.${suffix}`,
+        14, 47
+      );
+    }
 
-  // Lignes vélos
-  const body1: (string | { content: string; styles?: object })[][] = bikes.map(bike => {
-    const row: (string | { content: string; styles?: object })[] = [
-      { content: bike.id, styles: { fontStyle: 'bold', textColor: COLORS.primary } }
+    // En-tête à 2 niveaux pour cette tranche
+    const h1: string[] = ['Vélo'];
+    const h2: string[] = [''];
+    chunk.forEach(name => {
+      const short = name.length > 18 ? name.substring(0, 17) + '…' : name;
+      h1.push(short, '');
+      h2.push('Action', 'Type');
+    });
+
+    // Lignes vélos pour cette tranche
+    const bodyChunk: (string | { content: string; styles?: object })[][] = bikes.map(bike => {
+      const row: (string | { content: string; styles?: object })[] = [
+        { content: bike.id, styles: { fontStyle: 'bold', textColor: COLORS.primary } }
+      ];
+      chunk.forEach(partName => {
+        const part = bike.parts.find((p: BikePart) => p.name === partName);
+        let actionLabel = '';
+        let statusLabel = '';
+        let actionColor = COLORS.slate300;
+
+        if (part?.status === 'repair') {
+          actionLabel = 'Réparer';
+          statusLabel = part.isSpecific ? 'Spécifique' : 'Standard';
+          actionColor = COLORS.warning;
+        } else if (part?.status === 'replace') {
+          actionLabel = 'Remplacer';
+          statusLabel = part.isSpecific ? 'Spécifique' : 'Standard';
+          actionColor = COLORS.danger;
+        }
+
+        row.push(
+          { content: actionLabel, styles: { textColor: actionColor, fontStyle: actionLabel ? 'bold' : 'normal' } },
+          { content: statusLabel, styles: { textColor: COLORS.slate500, fontSize: 6.5 } }
+        );
+      });
+      return row;
+    });
+
+    // Ligne récap pour cette tranche
+    const recapRow: (string | { content: string; styles?: object })[] = [
+      { content: 'TOTAL', styles: { fontStyle: 'bold', textColor: COLORS.slate800 } }
     ];
-    allPartNames.forEach(partName => {
-      const part = bike.parts.find((p: BikePart) => p.name === partName);
-      let actionLabel = '';
-      let statusLabel = '';
-      let actionColor = COLORS.slate300;
-
-      if (part?.status === 'repair') {
-        actionLabel = 'Réparer';
-        statusLabel = part.isSpecific ? 'Spécifique' : 'Standard';
-        actionColor = COLORS.warning;
-      } else if (part?.status === 'replace') {
-        actionLabel = 'Remplacer';
-        statusLabel = part.isSpecific ? 'Spécifique' : 'Standard';
-        actionColor = COLORS.danger;
-      }
-
-      row.push(
-        { content: actionLabel, styles: { textColor: actionColor, fontStyle: actionLabel ? 'bold' : 'normal' } },
-        { content: statusLabel, styles: { textColor: COLORS.slate500, fontSize: 7 } }
+    chunk.forEach(partName => {
+      const total = bikes.filter(b =>
+        b.parts.find((p: BikePart) => p.name === partName && (p.status === 'repair' || p.status === 'replace'))
+      ).length;
+      recapRow.push(
+        { content: total > 0 ? `${total} vélo(s)` : '—', styles: { fontStyle: 'bold', textColor: total > 0 ? COLORS.slate800 : COLORS.slate300 } },
+        { content: '', styles: {} }
       );
     });
-    return row;
-  });
 
-  // Ligne récap tableau 1
-  const totalRow1: (string | { content: string; styles?: object })[] = [
-    { content: 'TOTAL', styles: { fontStyle: 'bold', textColor: COLORS.slate800 } }
-  ];
-  allPartNames.forEach(partName => {
-    const total = bikes.filter(b => b.parts.find((p: BikePart) => p.name === partName && (p.status === 'repair' || p.status === 'replace'))).length;
-    totalRow1.push(
-      { content: total > 0 ? `${total} vélo(s)` : '—', styles: { fontStyle: 'bold', textColor: total > 0 ? COLORS.slate800 : COLORS.slate300 } },
-      { content: '', styles: {} }
-    );
-  });
+    // Styles de colonnes pour cette tranche
+    const chunkColStyles: Record<number, object> = { 0: { cellWidth: BIKE_COL_W } };
+    chunk.forEach((_, i) => {
+      chunkColStyles[1 + i * 2]     = { cellWidth: ACTION_W, halign: 'center' };
+      chunkColStyles[1 + i * 2 + 1] = { cellWidth: TYPE_W,   halign: 'center' };
+    });
 
-  // Largeurs colonnes tableau 1
-  const usableWidth = 269;
-  const bikeColW = 28;
-  const remainW1 = usableWidth - bikeColW;
-  const partGroupW1 = allPartNames.length > 0 ? remainW1 / allPartNames.length : remainW1;
-  const actionW = Math.max(20, partGroupW1 * 0.55);
-  const statusW = Math.max(16, partGroupW1 * 0.45);
+    const bikesLen = bikes.length;
+    autoTable(doc, {
+      startY: chunkIndex === 0 ? 52 : 55, // 1er chunk = après titre, suivants = après saut de page
+      head: [h1, h2],
+      body: [...bodyChunk, recapRow],
+      theme: 'grid',
+      headStyles: {
+        fillColor: COLORS.slate800,
+        textColor: 255 as unknown as [number, number, number],
+        fontStyle: 'bold',
+        fontSize: 7.5,
+        halign: 'center',
+        valign: 'middle',
+      },
+      styles: {
+        cellPadding: 3,
+        fontSize: 7.5,
+        valign: 'middle',
+        lineColor: COLORS.slate300,
+        lineWidth: 0.1,
+        font: 'helvetica',
+        overflow: 'ellipsize',
+      },
+      alternateRowStyles: { fillColor: [248, 250, 252] as [number, number, number] },
+      columnStyles: chunkColStyles,
+      didParseCell: function(data) {
+        if (data.row.index === bikesLen && data.section === 'body') {
+          data.cell.styles.fillColor = [241, 245, 249] as [number, number, number];
+        }
+      },
+      didDrawPage: (data) => {
+        drawFooter(data);
+        // Si ce n'est pas la dernière page de la dernière tranche et qu'il y a
+        // plusieurs tranches, on réaffiche un mini-titre en haut de chaque page
+        if (partChunks.length > 1 && chunkIndex < partChunks.length - 1) {
+          doc.setFont('helvetica', 'italic');
+          doc.setFontSize(8);
+          doc.setTextColor(...COLORS.slate500);
+          doc.text(`Tableau 1 — partie ${chunkIndex + 1}/${partChunks.length} (suite)`, 14, 8);
+        }
+      },
+    });
 
-  const colStyles1: Record<number, object> = { 0: { cellWidth: bikeColW } };
-  allPartNames.forEach((_, i) => {
-    colStyles1[1 + i * 2 + 0] = { cellWidth: actionW, halign: 'center' };
-    colStyles1[1 + i * 2 + 1] = { cellWidth: statusW, halign: 'center' };
-  });
-
-  autoTable(doc, {
-    startY: 52,
-    head: [head1, head2],
-    body: [...body1, totalRow1],
-    theme: 'grid',
-    headStyles: {
-      fillColor: COLORS.slate800,
-      textColor: 255 as unknown as [number, number, number],
-      fontStyle: 'bold',
-      fontSize: 7,
-      halign: 'center',
-      valign: 'middle',
-    },
-    styles: {
-      cellPadding: 3,
-      fontSize: 7.5,
-      valign: 'middle',
-      lineColor: COLORS.slate300,
-      lineWidth: 0.1,
-      font: 'helvetica',
-      overflow: 'ellipsize',
-    },
-    alternateRowStyles: { fillColor: [248, 250, 252] as [number, number, number] },
-    columnStyles: colStyles1,
-    didParseCell: function(data) {
-      if (data.row.index === bikes.length && data.section === 'body') {
-        data.cell.styles.fillColor = [241, 245, 249] as [number, number, number];
-      }
-    },
-    didDrawPage: drawFooter,
+    // Nouvelle page pour la prochaine tranche (sauf la dernière)
+    if (chunkIndex < partChunks.length - 1) {
+      doc.addPage();
+      drawHeader();
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(...COLORS.slate800);
+      doc.text('Tableau 1 — État des interventions par vélo', 14, 40);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(...COLORS.slate500);
+      doc.text(`Suite — partie ${chunkIndex + 2}/${partChunks.length}`, 14, 47);
+    }
   });
 
   // ── 4. TABLEAU 2 : Devis financier (nouvelle page) ─────────────────────────
