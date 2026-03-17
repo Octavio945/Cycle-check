@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ArrowLeft, Plus, Trash2, Edit2, Check, X, Info } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import ThemeToggle from '@/components/ui/ThemeToggle';
 
 export default function PartsSettingsPage() {
   const { baseParts, addBasePart, removeBasePart, updateBasePart } = useStore();
@@ -60,14 +61,17 @@ export default function PartsSettingsPage() {
       />
 
       {/* Header */}
-      <header className="flex items-center gap-4 p-4 bg-[var(--cc-surface)] border-b border-[var(--cc-border)] sticky top-0 z-10">
-        <Link href="/settings" className="p-2 -ml-2 hover:bg-[var(--cc-border-subtle)] rounded-full transition-colors">
-          <ArrowLeft className="w-6 h-6 text-[var(--cc-text-muted)]" />
-        </Link>
-        <div>
-          <h1 className="text-xl font-semibold text-[var(--cc-text)]">Pièces de base</h1>
-          <p className="text-xs text-[var(--cc-text-muted)]">Liste commune à tous les vélos</p>
+      <header className="flex items-center justify-between gap-4 p-4 bg-[var(--cc-surface)] border-b border-[var(--cc-border)] sticky top-0 z-10">
+        <div className="flex items-center gap-3">
+          <Link href="/settings" className="p-2 -ml-2 hover:bg-[var(--cc-border-subtle)] rounded-full transition-colors">
+            <ArrowLeft className="w-6 h-6 text-[var(--cc-text-muted)]" />
+          </Link>
+          <div>
+            <h1 className="text-xl font-semibold text-[var(--cc-text)]">Pièces de base</h1>
+            <p className="text-xs text-[var(--cc-text-muted)]">Liste commune à tous les vélos</p>
+          </div>
         </div>
+        <ThemeToggle />
       </header>
 
       <div className="p-4 space-y-4">

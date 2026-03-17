@@ -9,6 +9,7 @@ import { ArrowLeft, Trash2, Camera, Plus } from 'lucide-react';
 import { PartStatus, BikePart } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import ThemeToggle from '@/components/ui/ThemeToggle';
 
 export default function BikeDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -125,13 +126,16 @@ export default function BikeDetailPage({ params }: { params: Promise<{ id: strin
           </Link>
           <h1 className="text-xl font-bold text-[var(--cc-text)] truncate max-w-[200px] sm:max-w-none">{bike.id}</h1>
         </div>
-        <button
-          onClick={() => setDeleteBikeModal(true)}
-          className="p-2 text-[var(--cc-danger)] hover:bg-[var(--cc-danger-light)] rounded-full transition-colors"
-          title="Supprimer le vélo"
-        >
-          <Trash2 className="w-5 h-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <button
+            onClick={() => setDeleteBikeModal(true)}
+            className="p-2 text-[var(--cc-danger)] hover:bg-[var(--cc-danger-light)] rounded-full transition-colors"
+            title="Supprimer le vélo"
+          >
+            <Trash2 className="w-5 h-5" />
+          </button>
+        </div>
       </header>
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-10 py-6 grid grid-cols-1 lg:grid-cols-3 gap-6">

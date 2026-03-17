@@ -2,8 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Bike, FileText, Settings, Sun, Moon } from 'lucide-react';
-import { useTheme } from './ThemeProvider';
+import { Home, Bike, FileText, Settings } from 'lucide-react';
 
 const NAV_ITEMS = [
   { href: '/', icon: Home, label: 'Accueil' },
@@ -14,24 +13,10 @@ const NAV_ITEMS = [
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { theme, toggleTheme } = useTheme();
-
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
     return pathname.startsWith(href);
   };
-
-  const ThemeToggle = () => (
-    <button
-      onClick={toggleTheme}
-      aria-label={theme === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}
-      className="p-2 rounded-xl transition-all text-[var(--cc-text-muted)] hover:text-[var(--cc-text)] hover:bg-[var(--cc-border-subtle)]"
-    >
-      {theme === 'dark'
-        ? <Sun className="w-5 h-5 text-amber-400" />
-        : <Moon className="w-5 h-5" />}
-    </button>
-  );
 
   return (
     <div className="flex min-h-screen bg-[var(--cc-bg)]">
@@ -68,10 +53,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        {/* Footer sidebar : version + toggle thème */}
-        <div className="px-5 py-4 border-t border-[var(--cc-border)] flex items-center justify-between">
+        {/* Footer sidebar : version */}
+        <div className="px-5 py-4 border-t border-[var(--cc-border)] flex items-center justify-center">
           <span className="text-xs text-[var(--cc-text-faint)]">CycleCheck v1.0</span>
-          <ThemeToggle />
         </div>
       </aside>
 
@@ -103,10 +87,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               </Link>
             );
           })}
-          {/* Toggle thème dans la bottom nav */}
-          <div className="flex items-center justify-center px-3 border-l border-[var(--cc-border)]">
-            <ThemeToggle />
-          </div>
         </div>
       </nav>
     </div>

@@ -5,6 +5,7 @@ import { ArrowLeft, FileOutput, Wrench, PenTool } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { generatePDFReport } from '@/lib/pdfService';
 import { useState } from 'react';
+import ThemeToggle from '@/components/ui/ThemeToggle';
 
 export default function ReportsPage() {
   const bikes = useStore((state) => state.bikes);
@@ -24,11 +25,14 @@ export default function ReportsPage() {
 
   return (
     <div className="min-h-screen bg-[var(--cc-bg)]">
-      <header className="flex items-center gap-4 px-4 py-4 bg-[var(--cc-surface)] border-b border-[var(--cc-border)] sticky top-0 z-10 sm:px-6">
-        <Link href="/" className="p-2 -ml-2 hover:bg-[var(--cc-border-subtle)] rounded-full transition-colors md:hidden">
-          <ArrowLeft className="w-5 h-5 text-[var(--cc-text-muted)]" />
-        </Link>
-        <h1 className="text-xl font-semibold text-[var(--cc-text)]">Rapports PDF</h1>
+      <header className="flex items-center justify-between gap-4 px-4 py-4 bg-[var(--cc-surface)] border-b border-[var(--cc-border)] sticky top-0 z-10 sm:px-6">
+        <div className="flex items-center gap-3">
+          <Link href="/" className="p-2 -ml-2 hover:bg-[var(--cc-border-subtle)] rounded-full transition-colors md:hidden">
+            <ArrowLeft className="w-5 h-5 text-[var(--cc-text-muted)]" />
+          </Link>
+          <h1 className="text-xl font-semibold text-[var(--cc-text)]">Rapports PDF</h1>
+        </div>
+        <ThemeToggle />
       </header>
 
       <div className="max-w-2xl mx-auto px-4 py-6 sm:px-6 space-y-5">

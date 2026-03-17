@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Plus, Bike as BikeIcon, Search } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { Bike, PartStatus } from '@/types';
+import ThemeToggle from '@/components/ui/ThemeToggle';
 
 const getBikeGlobalStatus = (bike: Bike): PartStatus => {
   if (bike.parts.some(p => p.status === 'replace')) return 'replace';
@@ -48,12 +49,15 @@ export default function BikesPage() {
         <h1 className="text-xl font-semibold text-[var(--cc-text)]">
           Flotte <span className="text-[var(--cc-text-faint)] font-normal text-base">({filteredBikes.length})</span>
         </h1>
-        <Link
-          href="/bikes/new"
-          className="flex items-center gap-2 bg-[var(--cc-primary)] text-white px-4 py-2 rounded-xl font-medium text-sm hover:opacity-90 active:scale-95 transition-all shadow-sm"
-        >
-          <Plus className="w-4 h-4" /> Ajouter
-        </Link>
+        <div className="flex items-center gap-3">
+          <ThemeToggle />
+          <Link
+            href="/bikes/new"
+            className="flex items-center gap-2 bg-[var(--cc-primary)] text-white px-4 py-2 rounded-xl font-medium text-sm hover:opacity-90 active:scale-95 transition-all shadow-sm"
+          >
+            <Plus className="w-4 h-4" /> Ajouter
+          </Link>
+        </div>
       </header>
 
       <div className="px-4 pt-4 pb-8 sm:px-6 lg:px-10 max-w-5xl mx-auto space-y-4">

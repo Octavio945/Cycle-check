@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { Bike, Settings, FileText } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { useEffect, useState } from 'react';
+import ThemeToggle from '@/components/ui/ThemeToggle';
 
 export default function Home() {
   const bikes = useStore((state) => state.bikes);
@@ -29,13 +30,19 @@ export default function Home() {
           <h1 className="text-2xl font-bold text-[var(--cc-primary)]">CycleCheck</h1>
           <p className="text-xs text-[var(--cc-text-muted)]">Gestion de flotte de vélos</p>
         </div>
-        <Link href="/settings" className="p-2 bg-[var(--cc-surface)] rounded-full shadow-sm hover:opacity-80 transition-opacity">
-          <Settings className="w-5 h-5 text-[var(--cc-text-muted)]" />
-        </Link>
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <Link href="/settings" className="p-2 bg-[var(--cc-surface)] rounded-full shadow-sm hover:opacity-80 transition-opacity">
+            <Settings className="w-5 h-5 text-[var(--cc-text-muted)]" />
+          </Link>
+        </div>
       </header>
 
       <div className="px-4 pb-8 sm:px-6 lg:px-10 max-w-5xl mx-auto">
-        <h2 className="hidden md:block text-2xl font-bold text-[var(--cc-text)] mt-6 mb-6">Tableau de bord</h2>
+        <div className="hidden md:flex justify-between items-center mt-6 mb-6">
+          <h2 className="text-2xl font-bold text-[var(--cc-text)]">Tableau de bord</h2>
+          <ThemeToggle />
+        </div>
 
         {/* Statistiques */}
         <section className="bg-[var(--cc-surface)] rounded-2xl p-5 shadow-[var(--cc-shadow-sm)] border border-[var(--cc-border)] mb-6">

@@ -7,6 +7,7 @@ import { ArrowLeft, Camera, ImagePlus, Bike as BikeIcon, X } from 'lucide-react'
 import { useStore } from '@/store/useStore';
 import Image from 'next/image';
 import CameraCapture from '@/components/ui/CameraCapture';
+import ThemeToggle from '@/components/ui/ThemeToggle';
 
 export default function NewBikePage() {
   const router = useRouter();
@@ -51,11 +52,14 @@ export default function NewBikePage() {
       )}
 
       <div className="min-h-screen bg-[var(--cc-bg)]">
-        <header className="flex items-center gap-4 p-4 bg-[var(--cc-surface)] border-b border-[var(--cc-border)] sticky top-0 z-10">
-          <Link href="/bikes" className="p-2 -ml-2 hover:bg-[var(--cc-border-subtle)] rounded-full transition-colors">
-            <ArrowLeft className="w-6 h-6 text-[var(--cc-text-muted)]" />
-          </Link>
-          <h1 className="text-xl font-semibold text-[var(--cc-text)]">Ajouter un vélo</h1>
+        <header className="flex items-center justify-between gap-4 p-4 bg-[var(--cc-surface)] border-b border-[var(--cc-border)] sticky top-0 z-10">
+          <div className="flex items-center gap-3">
+            <Link href="/bikes" className="p-2 -ml-2 hover:bg-[var(--cc-border-subtle)] rounded-full transition-colors">
+              <ArrowLeft className="w-6 h-6 text-[var(--cc-text-muted)]" />
+            </Link>
+            <h1 className="text-xl font-semibold text-[var(--cc-text)]">Ajouter un vélo</h1>
+          </div>
+          <ThemeToggle />
         </header>
 
         <form onSubmit={handleSubmit} className="max-w-xl mx-auto p-4 sm:p-6 flex flex-col gap-6">
