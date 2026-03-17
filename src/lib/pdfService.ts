@@ -1,4 +1,5 @@
 import jsPDF from 'jspdf';
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -202,5 +203,180 @@ export const generatePDFReport = (bikes: Bike[], type: ReportType) => {
   let typeName = isGlobal ? 'Global' : (isRepair ? 'Reparation' : 'Remplacement');
   if (isShopping) typeName = 'ListeCourses';
   const fileName = `CycleCheck_${typeName}_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`;
+  doc.save(fileName);
+};
+
+// ---------------------------------------------------------------------------
+// Rapport Tableau de Devis (matrice croisée vélos × pièces)
+// ---------------------------------------------------------------------------
+export const generateDevisReport = (bikes: Bike[]) => {
+  const doc = new jsPDF({ orientation: 'landscape' });
+  const dateStr = format(new Date(), 'dd MMMM yyyy à HH:mm', { locale: fr });
+
+  // ── 1. Collecte de toutes les pièces uniques (base + spécifiques) ──────────
+  const partMap = new Map<string, string>(); // id → name
+  bikes.forEach(bike => {
+    bike.parts.forEach(p => {
+      if (!partMap.has(p.name)) partMap.set(p.name, p.name);
+    });
+  });
+  const allPartNames = Array.from(partMap.values()); // ordre d'apparition
+
+  // ── 2. Header ──────────────────────────────────────────────────────────────
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(22);
+  doc.setTextColor(...COLORS.primary);
+  doc.text('CycleCheck', 14, 18);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(...COLORS.slate500);
+  doc.text('Document Technique', 283, 18, { align: 'right' });
+
+  doc.setDrawColor(...COLORS.slate300);
+  doc.setLineWidth(0.5);
+  doc.line(14, 22, 283, 22);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.setTextColor(...COLORS.slate800);
+  doc.text('Tableau de Devis — Pièces & Interventions', 14, 32);
+
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(9);
+  doc.setTextColor(...COLORS.slate500);
+  doc.text(`Édité le ${dateStr}`, 283, 32, { align: 'right' });
+
+  const descriptionText =
+    "Ce tableau croise la liste complète des vélos avec l'ensemble des pièces enregistrées. " +
+    "Pour chaque vélo et chaque pièce, l'action sélectionnée (Réparer / Remplacer) est indiquée. " +
+    "Les colonnes Prix Unitaire et Total sont laissées vides pour être complétées manuellement.";
+  const splittedDesc = doc.splitTextToSize(descriptionText, 269);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(...COLORS.slate500);
+  doc.text(splittedDesc, 14, 40);
+
+  const startY = 40 + splittedDesc.length * 5 + 6;
+
+  // ── 3. Construction de la table ───────────────────────────────────────────
+  // En-tête : 1ère colonne = Vélo, puis pour chaque pièce 3 colonnes
+  const head1: string[] = ['Vélo'];
+  const head2: string[] = [''];
+  allPartNames.forEach(name => {
+    // Nom tronqué pour l'en-tête (max 14 car.)
+    const shortName = name.length > 14 ? name.substring(0, 13) + '…' : name;
+    head1.push(shortName, '', '');
+    head2.push('Action', 'P.U. (€)', 'Total (€)');
+  });
+  head1.push('TOTAL');
+  head2.push('Général');
+
+  // Lignes vélos
+  const body: (string | { content: string; styles?: object })[][] = bikes.map(bike => {
+    const row: (string | { content: string; styles?: object })[] = [
+      { content: bike.id, styles: { fontStyle: 'bold', textColor: COLORS.primary } }
+    ];
+    allPartNames.forEach(partName => {
+      const part = bike.parts.find((p: BikePart) => p.name === partName);
+      let actionLabel = '';
+      let actionColor = COLORS.slate500;
+      if (part?.status === 'repair') { actionLabel = 'Réparer'; actionColor = COLORS.warning; }
+      else if (part?.status === 'replace') { actionLabel = 'Remplacer'; actionColor = COLORS.danger; }
+      row.push(
+        { content: actionLabel, styles: { textColor: actionColor, fontStyle: actionLabel ? 'bold' : 'normal' } },
+        '',  // Prix Unitaire — vide
+        ''   // Total — vide
+      );
+    });
+    row.push(''); // Colonne Total Général — vide
+    return row;
+  });
+
+  // Ligne récapitulative (totaux)
+  const totalRow: (string | { content: string; styles?: object })[] = [
+    { content: 'TOTAL INTERVENTIONS', styles: { fontStyle: 'bold', textColor: COLORS.slate800 } }
+  ];
+  allPartNames.forEach(partName => {
+    const count = bikes.reduce((acc, bike) => {
+      const p = bike.parts.find((pt: BikePart) => pt.name === partName);
+      return acc + (p && (p.status === 'repair' || p.status === 'replace') ? 1 : 0);
+    }, 0);
+    totalRow.push(
+      { content: count > 0 ? `${count} vélo(s)` : '—', styles: { fontStyle: 'bold', textColor: count > 0 ? COLORS.slate800 : COLORS.slate300 } },
+      '',  // Prix Unitaire Total vide
+      ''   // Montant Total vide
+    );
+  });
+  totalRow.push(''); // Total Général vide
+
+  // ── 4. Calcul dynamique des largeurs de colonnes ───────────────────────────
+  // Page paysage A4 : 297mm → zone utile ≈ 269mm (marges 14mm de chaque côté)
+  const usableWidth = 269;
+  const bikeColWidth = 28;
+  const totalColWidth = 22;
+  const remainingWidth = usableWidth - bikeColWidth - totalColWidth;
+  // Chaque pièce = 3 colonnes. On répartit équitablement selon le nombre de pièces.
+  const partGroupWidth = allPartNames.length > 0 ? remainingWidth / allPartNames.length : remainingWidth;
+  const actionColWidth = Math.max(18, partGroupWidth * 0.45);
+  const priceColWidth  = Math.max(14, partGroupWidth * 0.28);
+  const partTotalColWidth = Math.max(14, partGroupWidth * 0.27);
+
+  const columnStyles: Record<number, object> = {
+    0: { cellWidth: bikeColWidth },
+  };
+  allPartNames.forEach((_, i) => {
+    columnStyles[1 + i * 3 + 0] = { cellWidth: actionColWidth, halign: 'center' };
+    columnStyles[1 + i * 3 + 1] = { cellWidth: priceColWidth,  halign: 'center', textColor: COLORS.slate300 };
+    columnStyles[1 + i * 3 + 2] = { cellWidth: partTotalColWidth, halign: 'center', textColor: COLORS.slate300 };
+  });
+  columnStyles[1 + allPartNames.length * 3] = { cellWidth: totalColWidth, halign: 'center', textColor: COLORS.slate300 };
+
+  // ── 5. AutoTable ──────────────────────────────────────────────────────────
+  autoTable(doc, {
+    startY,
+    head: [head1, head2],
+    body: [...body, totalRow],
+    theme: 'grid',
+    headStyles: {
+      fillColor: COLORS.slate800,
+      textColor: 255 as unknown as [number, number, number],
+      fontStyle: 'bold',
+      fontSize: 7,
+      halign: 'center',
+      valign: 'middle',
+    },
+    styles: {
+      cellPadding: 3,
+      fontSize: 7.5,
+      valign: 'middle',
+      lineColor: COLORS.slate300,
+      lineWidth: 0.1,
+      font: 'helvetica',
+      overflow: 'ellipsize',
+    },
+    alternateRowStyles: { fillColor: [248, 250, 252] as [number, number, number] },
+    columnStyles,
+    // Couleur de fond pour la ligne récapitulative
+    didParseCell: function(data) {
+      if (data.row.index === bikes.length && data.section === 'body') {
+        data.cell.styles.fillColor = [241, 245, 249] as [number, number, number]; // slate-100
+      }
+    },
+    didDrawPage: function(data) {
+      // Footer
+      doc.setDrawColor(...COLORS.slate300);
+      doc.setLineWidth(0.5);
+      doc.line(14, 200, 283, 200);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+      doc.setTextColor(...COLORS.slate500);
+      doc.text('Généré automatiquement par l\'application CycleCheck', 14, 204);
+      doc.text(`Page ${data.pageNumber} sur ${doc.getNumberOfPages()}`, 283, 204, { align: 'right' });
+    },
+  });
+
+  // ── 6. Sauvegarde ─────────────────────────────────────────────────────────
+  const fileName = `CycleCheck_Devis_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`;
   doc.save(fileName);
 };

@@ -1,15 +1,15 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, FileOutput, Wrench, PenTool, ClipboardList, ShoppingCart } from 'lucide-react';
+import { ArrowLeft, FileOutput, Wrench, PenTool, ClipboardList, ShoppingCart, Receipt } from 'lucide-react';
 import { useStore } from '@/store/useStore';
-import { generatePDFReport } from '@/lib/pdfService';
+import { generatePDFReport, generateDevisReport } from '@/lib/pdfService';
 import { useState } from 'react';
 import ThemeToggle from '@/components/ui/ThemeToggle';
 
 export default function ReportsPage() {
   const bikes = useStore((state) => state.bikes);
-  const [generating, setGenerating] = useState<'repair' | 'replace' | 'global' | 'shopping' | null>(null);
+  const [generating, setGenerating] = useState<'repair' | 'replace' | 'global' | 'shopping' | 'devis' | null>(null);
 
   const bikesTotal = bikes.length;
   const bikesWithRepair  = bikes.filter(b => b.parts.some(p => p.status === 'repair')).length;
@@ -19,6 +19,15 @@ export default function ReportsPage() {
     setGenerating(type);
     try {
       generatePDFReport(bikes, type);
+    } finally {
+      setTimeout(() => setGenerating(null), 1000);
+    }
+  };
+
+  const handleGenerateDevis = async () => {
+    setGenerating('devis');
+    try {
+      generateDevisReport(bikes);
     } finally {
       setTimeout(() => setGenerating(null), 1000);
     }
@@ -137,6 +146,30 @@ export default function ReportsPage() {
               <span className="text-xs text-[var(--cc-danger)] font-medium animate-pulse">Génération...</span>
             ) : (
               <FileOutput className="w-5 h-5 text-[var(--cc-danger)] opacity-0 group-hover:opacity-100 transition-opacity" />
+            )}
+          </div>
+        </button>
+        {/* Rapport Tableau de Devis */}
+        <button
+          onClick={handleGenerateDevis}
+          disabled={generating !== null}
+          className="w-full bg-[var(--cc-surface)] p-5 rounded-2xl shadow-[var(--cc-shadow-sm)] border-2 border-[var(--cc-border)] hover:border-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/30 active:scale-[0.98] transition-all group text-left relative overflow-hidden flex items-center justify-between disabled:opacity-70"
+        >
+          <div className="absolute top-0 right-0 w-28 h-28 bg-violet-100 dark:bg-violet-900 rounded-bl-full opacity-40 group-hover:scale-110 transition-transform -z-0" />
+          <div className="relative z-10 flex items-center gap-4">
+            <div className="bg-violet-100 dark:bg-violet-900/50 p-3 rounded-xl">
+              <Receipt className="w-6 h-6 text-violet-600 dark:text-violet-400" />
+            </div>
+            <div>
+              <h2 className="font-bold text-[var(--cc-text)] text-base">Tableau de Devis</h2>
+              <p className="text-sm text-[var(--cc-text-muted)]">Matrice vélos × pièces avec prix à remplir</p>
+            </div>
+          </div>
+          <div className="relative z-10">
+            {generating === 'devis' ? (
+              <span className="text-xs text-violet-600 font-medium animate-pulse">Génération...</span>
+            ) : (
+              <FileOutput className="w-5 h-5 text-violet-600 opacity-0 group-hover:opacity-100 transition-opacity" />
             )}
           </div>
         </button>
