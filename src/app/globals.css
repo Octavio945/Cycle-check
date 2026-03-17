@@ -1,26 +1,93 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ═══════════════════════════════════════════════════
+   DESIGN TOKENS — CycleCheck
+   Palette : Indigo 600 (primary) + Slate (neutrals)
+   ═══════════════════════════════════════════════════ */
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Brand — Indigo 600 */
+  --cc-primary:         #4f46e5;
+  --cc-primary-hover:   #4338ca;
+  --cc-primary-light:   #eef2ff;
+  --cc-primary-text:    #3730a3;
+
+  /* Semantic */
+  --cc-success:         #16a34a;
+  --cc-success-light:   #f0fdf4;
+  --cc-success-text:    #14532d;
+  --cc-warning:         #d97706;
+  --cc-warning-light:   #fffbeb;
+  --cc-warning-text:    #78350f;
+  --cc-danger:          #dc2626;
+  --cc-danger-light:    #fef2f2;
+  --cc-danger-text:     #7f1d1d;
+
+  /* Surface — Light mode */
+  --cc-bg:              #f8fafc;
+  --cc-surface:         #ffffff;
+  --cc-surface-raised:  #ffffff;
+  --cc-border:          #e2e8f0;
+  --cc-border-subtle:   #f1f5f9;
+
+  /* Text — Light mode */
+  --cc-text:            #0f172a;
+  --cc-text-muted:      #64748b;
+  --cc-text-faint:      #94a3b8;
+
+  /* Shadow */
+  --cc-shadow-sm:       0 1px 3px 0 rgb(0 0 0 / .08), 0 1px 2px -1px rgb(0 0 0 / .08);
+  --cc-shadow:          0 4px 6px -1px rgb(0 0 0 /  .08), 0 2px 4px -2px rgb(0 0 0 / .08);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+/* ── Dark mode overrides (class strategy) ── */
+.dark {
+  --cc-bg:              #0f172a;
+  --cc-surface:         #1e293b;
+  --cc-surface-raised:  #273549;
+  --cc-border:          #334155;
+  --cc-border-subtle:   #1e293b;
+
+  --cc-text:            #f1f5f9;
+  --cc-text-muted:      #94a3b8;
+  --cc-text-faint:      #64748b;
+
+  --cc-primary-light:   #1e1b4b;
+  --cc-primary-text:    #a5b4fc;
+
+  --cc-success-light:   #052e16;
+  --cc-success-text:    #86efac;
+  --cc-warning-light:   #1c1400;
+  --cc-warning-text:    #fde68a;
+  --cc-danger-light:    #1c0000;
+  --cc-danger-text:     #fca5a5;
+
+  --cc-shadow-sm:       0 1px 3px 0 rgb(0 0 0 / .3), 0 1px 2px -1px rgb(0 0 0 / .3);
+  --cc-shadow:          0 4px 6px -1px rgb(0 0 0 / .4), 0 2px 4px -2px rgb(0 0 0 / .4);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* ── Base styles ── */
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--cc-bg);
+    color: var(--cc-text);
+    font-family: var(--font-inter, system-ui, sans-serif);
+    -webkit-font-smoothing: antialiased;
+    transition: background-color 0.2s ease, color 0.2s ease;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
-}
+/* ── Scrollbar styling ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--cc-border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--cc-text-faint); }

@@ -1,65 +1,90 @@
-import Image from "next/image";
+'use client';
+
+import Link from 'next/link';
+import { Bike, Settings, FileText } from 'lucide-react';
+import { useStore } from '@/store/useStore';
+import { useEffect, useState } from 'react';
 
 export default function Home() {
+  const bikes = useStore((state) => state.bikes);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => { setMounted(true); }, []);
+
+  const totalBikes    = bikes.length;
+  const bikesToRepair  = bikes.filter(b => b.parts.some(p => p.status === 'repair')).length;
+  const bikesToReplace = bikes.filter(b => b.parts.some(p => p.status === 'replace')).length;
+
+  const stats = [
+    { label: 'Total', value: totalBikes,    bg: 'bg-[var(--cc-primary-light)]',  text: 'text-[var(--cc-primary)]',          border: 'border-indigo-200 dark:border-indigo-900' },
+    { label: 'À réparer', value: bikesToRepair, bg: 'bg-[var(--cc-warning-light)]', text: 'text-[var(--cc-warning)]',  border: 'border-amber-200 dark:border-amber-900' },
+    { label: 'À changer', value: bikesToReplace,bg: 'bg-[var(--cc-danger-light)]', text: 'text-[var(--cc-danger)]', border: 'border-red-200 dark:border-red-900' },
+  ];
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-[var(--cc-bg)]">
+      {/* Header mobile */}
+      <header className="flex justify-between items-center px-4 py-5 md:hidden">
+        <div>
+          <h1 className="text-2xl font-bold text-[var(--cc-primary)]">CycleCheck</h1>
+          <p className="text-xs text-[var(--cc-text-muted)]">Gestion de flotte de vélos</p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+        <Link href="/settings" className="p-2 bg-[var(--cc-surface)] rounded-full shadow-sm hover:opacity-80 transition-opacity">
+          <Settings className="w-5 h-5 text-[var(--cc-text-muted)]" />
+        </Link>
+      </header>
+
+      <div className="px-4 pb-8 sm:px-6 lg:px-10 max-w-5xl mx-auto">
+        <h2 className="hidden md:block text-2xl font-bold text-[var(--cc-text)] mt-6 mb-6">Tableau de bord</h2>
+
+        {/* Statistiques */}
+        <section className="bg-[var(--cc-surface)] rounded-2xl p-5 shadow-[var(--cc-shadow-sm)] border border-[var(--cc-border)] mb-6">
+          <h2 className="text-base font-semibold text-[var(--cc-text-muted)] mb-4">Aperçu de la flotte</h2>
+          <div className="grid grid-cols-3 gap-3 text-center">
+            {stats.map(({ label, value, bg, text, border }) => (
+              <div key={label} className={`${bg} ${border} py-4 rounded-xl border flex flex-col items-center justify-center`}>
+                <span className={`text-3xl font-bold ${text}`}>{mounted ? value : '–'}</span>
+                <span className={`text-xs font-medium mt-1 ${text} opacity-80`}>{label}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Actions */}
+        <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <Link
+            href="/bikes"
+            className="bg-[var(--cc-primary)] text-white p-5 rounded-2xl flex items-center justify-between shadow-[var(--cc-shadow)] hover:opacity-90 active:scale-[0.98] transition-all group"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            <div className="flex items-center gap-4">
+              <div className="bg-white/20 p-2.5 rounded-xl border border-white/30">
+                <Bike className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <span className="block font-semibold text-lg leading-tight">Gérer les vélos</span>
+                <span className="text-sm text-white/70">Ajouter, voir ou modifier</span>
+              </div>
+            </div>
+            <span className="text-xl group-hover:translate-x-1 transition-transform">→</span>
+          </Link>
+
+          <Link
+            href="/reports"
+            className="bg-[var(--cc-surface)] text-[var(--cc-text)] p-5 rounded-2xl flex items-center justify-between shadow-[var(--cc-shadow-sm)] border border-[var(--cc-border)] hover:border-[var(--cc-primary)] active:scale-[0.98] transition-all group"
           >
-            Documentation
-          </a>
-        </div>
-      </main>
+            <div className="flex items-center gap-4">
+              <div className="bg-[var(--cc-border-subtle)] p-2.5 rounded-xl border border-[var(--cc-border)] group-hover:bg-[var(--cc-primary-light)] group-hover:border-indigo-200 transition-colors">
+                <FileText className="w-6 h-6 text-[var(--cc-text-muted)] group-hover:text-[var(--cc-primary)] transition-colors" />
+              </div>
+              <div>
+                <span className="block font-semibold text-lg leading-tight">Générer les rapports</span>
+                <span className="text-sm text-[var(--cc-text-muted)]">Exporter en PDF</span>
+              </div>
+            </div>
+            <span className="text-xl text-[var(--cc-text-faint)] group-hover:translate-x-1 group-hover:text-[var(--cc-primary)] transition-all">→</span>
+          </Link>
+        </section>
+      </div>
     </div>
   );
 }
