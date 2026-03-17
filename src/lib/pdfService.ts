@@ -266,13 +266,12 @@ export const generateDevisReport = (bikes: Bike[]) => {
   //
   // Calcul du nombre max de pièces par tranche pour rester dans la largeur utile
   // Page paysage A4 : zone utile ≈ 269 mm ; colonne "Vélo" = 28 mm
-  // Chaque pièce = 2 colonnes (Action 22 mm + Type 16 mm) = 38 mm par pièce
+  // Chaque pièce = 1 colonne (Action 25 mm)
   const USABLE_W   = 269;
   const BIKE_COL_W = 28;
-  const ACTION_W   = 22;
-  const TYPE_W     = 16;
-  const PART_GROUP_W     = ACTION_W + TYPE_W; // 38 mm
-  const MAX_PARTS_PER_CHUNK = Math.max(1, Math.floor((USABLE_W - BIKE_COL_W) / PART_GROUP_W)); // ≈ 6
+  const ACTION_W   = 25;
+  const PART_GROUP_W = ACTION_W; // 25 mm
+  const MAX_PARTS_PER_CHUNK = Math.max(1, Math.floor((USABLE_W - BIKE_COL_W) / PART_GROUP_W)); // ≈ 9
 
   // Découpage des pièces en tranches
   const partChunks: string[][] = [];
@@ -303,8 +302,8 @@ export const generateDevisReport = (bikes: Bike[]) => {
     const h2: string[] = [''];
     chunk.forEach(name => {
       const short = name.length > 18 ? name.substring(0, 17) + '…' : name;
-      h1.push(short, '');
-      h2.push('Action', 'Type');
+      h1.push(short);
+      h2.push('Action');
     });
 
     // Lignes vélos pour cette tranche
@@ -315,22 +314,18 @@ export const generateDevisReport = (bikes: Bike[]) => {
       chunk.forEach(partName => {
         const part = bike.parts.find((p: BikePart) => p.name === partName);
         let actionLabel = '';
-        let statusLabel = '';
         let actionColor = COLORS.slate300;
 
         if (part?.status === 'repair') {
           actionLabel = 'Réparer';
-          statusLabel = part.isSpecific ? 'Spécifique' : 'Standard';
           actionColor = COLORS.warning;
         } else if (part?.status === 'replace') {
           actionLabel = 'Remplacer';
-          statusLabel = part.isSpecific ? 'Spécifique' : 'Standard';
           actionColor = COLORS.danger;
         }
 
         row.push(
-          { content: actionLabel, styles: { textColor: actionColor, fontStyle: actionLabel ? 'bold' : 'normal' } },
-          { content: statusLabel, styles: { textColor: COLORS.slate500, fontSize: 6.5 } }
+          { content: actionLabel, styles: { textColor: actionColor, fontStyle: actionLabel ? 'bold' : 'normal' } }
         );
       });
       return row;
@@ -345,16 +340,14 @@ export const generateDevisReport = (bikes: Bike[]) => {
         b.parts.find((p: BikePart) => p.name === partName && (p.status === 'repair' || p.status === 'replace'))
       ).length;
       recapRow.push(
-        { content: total > 0 ? `${total} vélo(s)` : '—', styles: { fontStyle: 'bold', textColor: total > 0 ? COLORS.slate800 : COLORS.slate300 } },
-        { content: '', styles: {} }
+        { content: total > 0 ? `${total} vélo(s)` : '—', styles: { fontStyle: 'bold', textColor: total > 0 ? COLORS.slate800 : COLORS.slate300, halign: 'center' as const } }
       );
     });
 
     // Styles de colonnes pour cette tranche
     const chunkColStyles: Record<number, object> = { 0: { cellWidth: BIKE_COL_W } };
     chunk.forEach((_, i) => {
-      chunkColStyles[1 + i * 2]     = { cellWidth: ACTION_W, halign: 'center' };
-      chunkColStyles[1 + i * 2 + 1] = { cellWidth: TYPE_W,   halign: 'center' };
+      chunkColStyles[1 + i] = { cellWidth: ACTION_W, halign: 'center' };
     });
 
     const bikesLen = bikes.length;
