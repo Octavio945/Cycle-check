@@ -4,7 +4,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Bike, BikePart } from '../types';
 
-type ReportType = 'repair' | 'replace' | 'global';
+type ReportType = 'repair' | 'replace' | 'global' | 'shopping';
 
 // --- Couleurs de la charte ---
 const COLORS = {
@@ -22,7 +22,8 @@ export const generatePDFReport = (bikes: Bike[], type: ReportType) => {
   
   const isRepair = type === 'repair';
   const isGlobal = type === 'global';
-  const accentColor = isGlobal ? COLORS.primary : (isRepair ? COLORS.warning : COLORS.danger);
+  const isShopping = type === 'shopping';
+  const accentColor = (isGlobal || isShopping) ? COLORS.primary : (isRepair ? COLORS.warning : COLORS.danger);
 
   // --- 1. En-tête (Header) Logo & Branding ---
   doc.setFont('helvetica', 'bold');
@@ -44,9 +45,10 @@ export const generatePDFReport = (bikes: Bike[], type: ReportType) => {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(18);
   doc.setTextColor(...COLORS.slate800);
-  const title = isGlobal 
-    ? 'Inventaire Global de la Flotte'
-    : (isRepair ? 'Rapport : Vélos à Réparer' : 'Rapport : Pièces à Remplacer');
+  let title = '';
+  if (isShopping) title = 'Liste de Courses (Besoins Matériels)';
+  else if (isGlobal) title = 'Inventaire Global de la Flotte';
+  else title = isRepair ? 'Rapport : Vélos à Réparer' : 'Rapport : Pièces à Remplacer';
   doc.text(title, 14, 38);
 
   // Date alignée à droite
@@ -61,7 +63,9 @@ export const generatePDFReport = (bikes: Bike[], type: ReportType) => {
   doc.setTextColor(...COLORS.slate500);
   
   let descriptionText = "";
-  if (isGlobal) {
+  if (isShopping) {
+    descriptionText = "Ce rapport consolide les besoins en pièces de rechange et les réparations à effectuer sur l'ensemble du parc. Il sert de liste de préparation (Shopping List) pour les achats ou le destockage atelier.";
+  } else if (isGlobal) {
     descriptionText = "Ce document constitue l'inventaire complet de la flotte de vélos. Il recense l'ensemble des équipements enregistrés ainsi qu'un aperçu technique de leur état de fonctionnement actuel.";
   } else if (isRepair) {
     descriptionText = "Ce document recense l'ensemble de la flotte nécessitant des interventions de maintenance (réparations modérées). Il détaille les vélos concernés ainsi que la liste exhaustive des pièces à réviser pour faciliter la prise en charge par l'équipe technique.";
@@ -76,34 +80,62 @@ export const generatePDFReport = (bikes: Bike[], type: ReportType) => {
   // --- 3. Préparation des données du Tableau ---
   const tableData: string[][] = [];
   
-  bikes.forEach(bike => {
-    if (isGlobal) {
-      // Rapport global : on prend tous les vélos et on fait un résumé de l'état
-      const replaceCount = bike.parts.filter(p => p.status === 'replace').length;
-      const repairCount = bike.parts.filter(p => p.status === 'repair').length;
-      
-      let statusSummary = "Bon état général";
-      if (replaceCount > 0 && repairCount > 0) statusSummary = `${replaceCount} pièce(s) à remplacer, ${repairCount} à réparer`;
-      else if (replaceCount > 0) statusSummary = `${replaceCount} pièce(s) à remplacer`;
-      else if (repairCount > 0) statusSummary = `${repairCount} pièce(s) à réparer`;
+  if (isShopping) {
+    // Rapport Shopping : Regroupement statistique par pièce et statut
+    const pieceCount: Record<string, { repair: number, replace: number }> = {};
+    
+    bikes.forEach(bike => {
+      bike.parts.forEach(p => {
+        if (p.status === 'repair' || p.status === 'replace') {
+          if (!pieceCount[p.name]) pieceCount[p.name] = { repair: 0, replace: 0 };
+          pieceCount[p.name][p.status] += 1;
+        }
+      });
+    });
 
-      const lastUpdate = format(new Date(bike.updatedAt), 'dd/MM/yyyy HH:mm');
-      tableData.push([bike.id, statusSummary, lastUpdate]);
-
-    } else {
-      // Rapport spécifique (Repair ou Replace)
-      const concernedParts = bike.parts.filter(p => p.status === type);
-      
-      if (concernedParts.length > 0) {
-        const partsText = concernedParts.map(p => 
-          `• ${p.name} ${p.isSpecific ? '(Ajout spécifique)' : ''}`
-        ).join('\n');
-        
-        const lastUpdate = format(new Date(bike.updatedAt), 'dd/MM/yyyy HH:mm');
-        tableData.push([bike.id, partsText, lastUpdate]);
+    // Conversion en tableau
+    Object.entries(pieceCount).forEach(([name, counts]) => {
+      if (counts.replace > 0) {
+         tableData.push([name, 'Remplacer (Urgent)', counts.replace.toString()]);
       }
-    }
-  });
+      if (counts.repair > 0) {
+         tableData.push([name, 'Réparer (Atelier)', counts.repair.toString()]);
+      }
+    });
+    
+    // Tri pour mettre les remplacements en premier
+    tableData.sort((a, b) => b[1].localeCompare(a[1]));
+
+  } else {
+    bikes.forEach(bike => {
+      if (isGlobal) {
+        // Rapport global : on prend tous les vélos et on fait un résumé de l'état
+        const replaceCount = bike.parts.filter(p => p.status === 'replace').length;
+        const repairCount = bike.parts.filter(p => p.status === 'repair').length;
+        
+        let statusSummary = "Bon état général";
+        if (replaceCount > 0 && repairCount > 0) statusSummary = `${replaceCount} pièce(s) à remplacer, ${repairCount} à réparer`;
+        else if (replaceCount > 0) statusSummary = `${replaceCount} pièce(s) à remplacer`;
+        else if (repairCount > 0) statusSummary = `${repairCount} pièce(s) à réparer`;
+
+        const lastUpdate = format(new Date(bike.updatedAt), 'dd/MM/yyyy HH:mm');
+        tableData.push([bike.id, statusSummary, lastUpdate]);
+
+      } else {
+        // Rapport spécifique (Repair ou Replace)
+        const concernedParts = bike.parts.filter(p => p.status === type);
+        
+        if (concernedParts.length > 0) {
+          const partsText = concernedParts.map(p => 
+            `• ${p.name} ${p.isSpecific ? '(Ajout spécifique)' : ''}`
+          ).join('\n');
+          
+          const lastUpdate = format(new Date(bike.updatedAt), 'dd/MM/yyyy HH:mm');
+          tableData.push([bike.id, partsText, lastUpdate]);
+        }
+      }
+    });
+  }
 
   const startYForTable = 46 + (splittedDescription.length * 5) + 8; // Calc auto de la position Y
 
@@ -111,7 +143,10 @@ export const generatePDFReport = (bikes: Bike[], type: ReportType) => {
   if (tableData.length > 0) {
     autoTable(doc, {
       startY: startYForTable,
-      head: [['Identifiant du Vélo', isGlobal ? 'État Général' : 'Détail des pièces concernées', 'Dernière MAJ']],
+      head: [isShopping 
+        ? ['Nom de la Pièce', 'Action requise', 'Quantité totale'] 
+        : ['Identifiant du Vélo', isGlobal ? 'État Général' : 'Détail des pièces concernées', 'Dernière MAJ']
+      ],
       body: tableData,
       theme: 'grid',
       headStyles: {
@@ -164,7 +199,8 @@ export const generatePDFReport = (bikes: Bike[], type: ReportType) => {
   }
 
   // --- 6. Sauvegarde du fichier ---
-  const typeName = isGlobal ? 'Global' : (isRepair ? 'Reparation' : 'Remplacement');
+  let typeName = isGlobal ? 'Global' : (isRepair ? 'Reparation' : 'Remplacement');
+  if (isShopping) typeName = 'ListeCourses';
   const fileName = `CycleCheck_${typeName}_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`;
   doc.save(fileName);
 };

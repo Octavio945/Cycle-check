@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, FileOutput, Wrench, PenTool, ClipboardList } from 'lucide-react';
+import { ArrowLeft, FileOutput, Wrench, PenTool, ClipboardList, ShoppingCart } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { generatePDFReport } from '@/lib/pdfService';
 import { useState } from 'react';
@@ -9,13 +9,13 @@ import ThemeToggle from '@/components/ui/ThemeToggle';
 
 export default function ReportsPage() {
   const bikes = useStore((state) => state.bikes);
-  const [generating, setGenerating] = useState<'repair' | 'replace' | 'global' | null>(null);
+  const [generating, setGenerating] = useState<'repair' | 'replace' | 'global' | 'shopping' | null>(null);
 
   const bikesTotal = bikes.length;
   const bikesWithRepair  = bikes.filter(b => b.parts.some(p => p.status === 'repair')).length;
   const bikesWithReplace = bikes.filter(b => b.parts.some(p => p.status === 'replace')).length;
 
-  const handleGenerate = async (type: 'repair' | 'replace' | 'global') => {
+  const handleGenerate = async (type: 'repair' | 'replace' | 'global' | 'shopping') => {
     setGenerating(type);
     try {
       generatePDFReport(bikes, type);
@@ -62,6 +62,31 @@ export default function ReportsPage() {
               <span className="text-xs text-[var(--cc-primary)] font-medium animate-pulse">Génération...</span>
             ) : (
               <FileOutput className="w-5 h-5 text-[var(--cc-primary)] opacity-0 group-hover:opacity-100 transition-opacity" />
+            )}
+          </div>
+        </button>
+
+        {/* Rapport Liste de Courses */}
+        <button
+          onClick={() => handleGenerate('shopping')}
+          disabled={generating !== null}
+          className="w-full bg-[var(--cc-surface)] p-5 rounded-2xl shadow-[var(--cc-shadow-sm)] border-2 border-[var(--cc-border)] hover:border-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 active:scale-[0.98] transition-all group text-left relative overflow-hidden flex items-center justify-between disabled:opacity-70"
+        >
+          <div className="absolute top-0 right-0 w-28 h-28 bg-emerald-100 dark:bg-emerald-900 rounded-bl-full opacity-40 group-hover:scale-110 transition-transform -z-0" />
+          <div className="relative z-10 flex items-center gap-4">
+            <div className="bg-emerald-100 dark:bg-emerald-900/50 p-3 rounded-xl">
+              <ShoppingCart className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div>
+              <h2 className="font-bold text-[var(--cc-text)] text-base">Liste de Courses</h2>
+              <p className="text-sm text-[var(--cc-text-muted)]">Totaux des pièces à réparer et remplacer</p>
+            </div>
+          </div>
+          <div className="relative z-10">
+            {generating === 'shopping' ? (
+              <span className="text-xs text-emerald-600 font-medium animate-pulse">Génération...</span>
+            ) : (
+              <FileOutput className="w-5 h-5 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity" />
             )}
           </div>
         </button>
