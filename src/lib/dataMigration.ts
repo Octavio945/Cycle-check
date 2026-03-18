@@ -26,7 +26,7 @@ export const PART_PRICES: Record<string, number> = {
   'Pneu arrière': 2700,
   'Chambre à air avant': 1200,
   'Chambre à air arrière': 1200,
-  'Patin de frein': 100,
+  'Patin de frein': 1000,
   'Bille centrale': 1000,
   'Bras frein': 1000,
   'Frein complet': 2600,
