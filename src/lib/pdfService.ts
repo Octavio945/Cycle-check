@@ -557,44 +557,40 @@ export const generateDevisReport = (bikes: Bike[]) => {
         costStr = `${costReplace} FCFA`;
       } else if (costReplace === 0 && costRepair === 0) {
         costStr = '—';
-      }
-      
-      // User requested format: "lors il y a des vélo sui on des trucs a reparer on aura le prix ... entre parenthese (plus le pris des piece a reparer )"
-      if (costRepair > 0) {
-        costStr += costStr ? ` (plus ${costRepair} FCFA pour les pièces à réparer)` : `(plus ${costRepair} FCFA pour les pièces à réparer)`;
+      } else if (costReplace === 0 && costRepair > 0) {
+        costStr = '0 FCFA'; // Que des réparations
       }
 
       body3.push([
         { content: bike.id, styles: { fontStyle: 'bold', textColor: COLORS.primary } },
         { content: replaceCount > 0 ? replaceCount.toString() : '—', styles: { textColor: replaceCount > 0 ? COLORS.danger : COLORS.slate300, halign: 'center' as const, fontStyle: replaceCount > 0 ? 'bold' : 'normal' } },
         { content: repairCount > 0 ? repairCount.toString() : '—', styles: { textColor: repairCount > 0 ? COLORS.warning : COLORS.slate300, halign: 'center' as const, fontStyle: repairCount > 0 ? 'bold' : 'normal' } },
-        { content: costStr, styles: { fontStyle: 'bold', textColor: COLORS.slate800, halign: 'center' as const } }
+        { content: costStr, styles: { fontStyle: 'bold', textColor: COLORS.slate800, halign: 'center' as const } },
+        '', // Coût Réparations manuelle
+        ''  // Total manuelle
       ]);
     }
   });
 
   if (body3.length === 0) {
     body3.push([
-      { content: "Aucune intervention estimable sur les vélos", colSpan: 4, styles: { halign: 'center' as const, textColor: COLORS.slate500 } }
+      { content: "Aucune intervention estimable sur les vélos", colSpan: 6, styles: { halign: 'center' as const, textColor: COLORS.slate500 } }
     ]);
     // Remplir une ligne factice pour que le tableau ne plante pas
   } else {
-    let totalCostStr = `${totalBikesReplaceCost} FCFA`;
-    if (totalBikesRepairCost > 0) {
-       totalCostStr += ` (plus ${totalBikesRepairCost} FCFA pour les pièces à réparer)`;
-    }
-
     body3.push([
       { content: 'TOTAL GÉNÉRAL', styles: { fontStyle: 'bold', textColor: COLORS.slate800 } },
       { content: totalReplaces.toString(), styles: { fontStyle: 'bold', textColor: COLORS.danger, halign: 'center' as const } },
       { content: totalRepairs.toString(), styles: { fontStyle: 'bold', textColor: COLORS.warning, halign: 'center' as const } },
-      { content: totalCostStr, styles: { fontStyle: 'bold', textColor: COLORS.primary, halign: 'center' as const } }
+      { content: `${totalBikesReplaceCost} FCFA`, styles: { fontStyle: 'bold', textColor: COLORS.primary, halign: 'center' as const } },
+      '',
+      ''
     ]);
   }
 
   autoTable(doc, {
     startY: 52,
-    head: [['Vélo', 'Nb Pièces à Remplacer', 'Nb Pièces à Réparer', "Coût estimé"]],
+    head: [['Vélo', 'Nb Pièces à Remplacer', 'Nb Pièces à Réparer', "Coût Pièces (Rempl.)", "Coût Réparations", "Total Général"]],
     body: body3 as any,
     theme: 'grid',
     headStyles: {
@@ -608,10 +604,12 @@ export const generateDevisReport = (bikes: Bike[]) => {
     styles: { cellPadding: 5, fontSize: 9, valign: 'middle', lineColor: COLORS.slate300, lineWidth: 0.2, font: 'helvetica' },
     alternateRowStyles: { fillColor: [248, 250, 252] as [number, number, number] },
     columnStyles: {
-      0: { cellWidth: 40 },
-      1: { cellWidth: 45, halign: 'center' },
-      2: { cellWidth: 45, halign: 'center' },
-      3: { cellWidth: 125, halign: 'center' },
+      0: { cellWidth: 26 },
+      1: { cellWidth: 32, halign: 'center' },
+      2: { cellWidth: 32, halign: 'center' },
+      3: { cellWidth: 34, halign: 'center' },
+      4: { cellWidth: 30, halign: 'center' },
+      5: { cellWidth: 28, halign: 'center' },
     },
     didParseCell: function(data) {
       if (body3.length > 1 && data.row.index === body3.length - 1 && data.section === 'body') {
@@ -683,17 +681,17 @@ export const generateCostRankingReport = (bikes: Bike[], limit?: number) => {
 
   // 1. Calculer les coûts pour chaque vélo
   let bikeCosts = bikes.map(bike => {
-    let replaceCount = 0;
-    let repairCount = 0;
+    let replaceParts: string[] = [];
+    let repairParts: string[] = [];
     let costReplace = 0;
     let costRepair = 0;
 
     bike.parts.forEach((p: BikePart) => {
       if (p.status === 'replace') {
-        replaceCount++;
+        replaceParts.push(p.name);
         costReplace += (PART_PRICES[p.name] || 0);
       } else if (p.status === 'repair') {
-        repairCount++;
+        repairParts.push(p.name);
         costRepair += (PART_PRICES[p.name] || 0);
       }
     });
@@ -701,20 +699,19 @@ export const generateCostRankingReport = (bikes: Bike[], limit?: number) => {
     const totalCost = costReplace + costRepair;
     return {
       id: bike.id,
-      replaceCount,
-      repairCount,
+      replaceParts,
+      repairParts,
       costReplace,
       costRepair,
       totalCost
     };
   });
 
-  // 2. Filtrer les vélos sans intervention (totalCost === 0 n'est pas suffisant si tout est sans prix, 
-  // on vérifie plutôt qu'il y a au moins une pièce à changer ou réparer)
-  bikeCosts = bikeCosts.filter(b => b.replaceCount > 0 || b.repairCount > 0);
+  // 2. Filtrer les vélos sans intervention
+  bikeCosts = bikeCosts.filter(b => b.replaceParts.length > 0 || b.repairParts.length > 0);
 
-  // 3. Trier du moins cher au plus cher
-  bikeCosts.sort((a, b) => a.totalCost - b.totalCost);
+  // 3. Trier du moins cher au plus cher en se basant UNIQUEMENT sur les pièces
+  bikeCosts.sort((a, b) => a.costReplace - b.costReplace);
 
   // 4. Limiter au Top X si demandé
   if (limit) {
@@ -722,69 +719,73 @@ export const generateCostRankingReport = (bikes: Bike[], limit?: number) => {
   }
 
   const body: (string | { content: string; styles?: object; colSpan?: number })[][] = [];
-  let sumAllShown = 0;
+  let sumReplaceCostShown = 0;
   let sumReplaceAll = 0;
   let sumRepairAll = 0;
 
   bikeCosts.forEach((b, index) => {
-    sumAllShown += b.totalCost;
-    sumReplaceAll += b.replaceCount;
-    sumRepairAll += b.repairCount;
+    sumReplaceCostShown += b.costReplace;
+    sumReplaceAll += b.replaceParts.length;
+    sumRepairAll += b.repairParts.length;
 
     let costStr = '';
     if (b.costReplace > 0) {
       costStr = `${b.costReplace} FCFA`;
     } else if (b.costReplace === 0 && b.costRepair === 0) {
-      costStr = 'Prix Inconnu';
-    }
-    
-    if (b.costRepair > 0) {
-      costStr += costStr ? ` (plus ${b.costRepair} FCFA pour réparer)` : `(plus ${b.costRepair} FCFA pour réparer)`;
+      costStr = '—';
+    } else {
+      costStr = '0 FCFA'; // Only repairs
     }
 
     body.push([
-      { content: `#${index + 1}`, styles: { textColor: COLORS.slate500, fontStyle: 'bold' } },
+      { content: `#${index + 1}`, styles: { textColor: COLORS.slate500, fontStyle: 'bold', halign: 'center' as const } },
       { content: b.id, styles: { fontStyle: 'bold', textColor: COLORS.primary } },
-      { content: b.replaceCount > 0 ? b.replaceCount.toString() : '—', styles: { textColor: b.replaceCount > 0 ? COLORS.danger : COLORS.slate300, halign: 'center' as const } },
-      { content: b.repairCount > 0 ? b.repairCount.toString() : '—', styles: { textColor: b.repairCount > 0 ? COLORS.warning : COLORS.slate300, halign: 'center' as const } },
-      { content: costStr, styles: { fontStyle: 'bold', textColor: COLORS.slate800, halign: 'right' as const } }
+      { content: b.replaceParts.length > 0 ? b.replaceParts.join('\n') : '—', styles: { textColor: b.replaceParts.length > 0 ? COLORS.danger : COLORS.slate300, halign: 'left' as const, fontSize: 8 } },
+      { content: b.repairParts.length > 0 ? b.repairParts.join('\n') : '—', styles: { textColor: b.repairParts.length > 0 ? COLORS.warning : COLORS.slate300, halign: 'left' as const, fontSize: 8 } },
+      { content: costStr, styles: { fontStyle: 'bold', textColor: COLORS.slate800, halign: 'center' as const } },
+      '',
+      ''
     ]);
   });
 
   if (body.length === 0) {
     body.push([
-      { content: "Aucun vélo ne nécessite d'intervention estimable.", colSpan: 5, styles: { halign: 'center' as const, textColor: COLORS.slate500 } }
+      { content: "Aucun vélo ne nécessite d'intervention estimable.", colSpan: 7, styles: { halign: 'center' as const, textColor: COLORS.slate500 } }
     ]);
   } else {
     body.push([
       { content: `TOTAL (${body.length} Vélos)`, colSpan: 2, styles: { fontStyle: 'bold', textColor: COLORS.slate800 } },
-      { content: sumReplaceAll.toString(), styles: { fontStyle: 'bold', textColor: COLORS.danger, halign: 'center' as const } },
-      { content: sumRepairAll.toString(), styles: { fontStyle: 'bold', textColor: COLORS.warning, halign: 'center' as const } },
-      { content: `${sumAllShown} FCFA`, styles: { fontStyle: 'bold', textColor: COLORS.primary, halign: 'right' as const } }
+      { content: `${sumReplaceAll} pièces`, styles: { fontStyle: 'bold', textColor: COLORS.danger, halign: 'center' as const } },
+      { content: `${sumRepairAll} pièces`, styles: { fontStyle: 'bold', textColor: COLORS.warning, halign: 'center' as const } },
+      { content: `${sumReplaceCostShown} FCFA`, styles: { fontStyle: 'bold', textColor: COLORS.primary, halign: 'center' as const } },
+      '',
+      ''
     ]);
   }
 
   autoTable(doc, {
     startY: 50,
-    head: [['N°', 'Vélo', 'Pièces à Remplacer', 'Pièces à Réparer', "Coût estimé"]],
+    head: [['N°', 'Vélo', 'Pièces à Remplacer', 'Pièces à Réparer', "Coût Pièces", "Réparations", "Total Vélo"]],
     body: body as any,
     theme: 'grid',
     headStyles: {
       fillColor: COLORS.slate800,
       textColor: 255 as unknown as [number, number, number],
       fontStyle: 'bold',
-      fontSize: 9,
+      fontSize: 8,
       halign: 'center',
       valign: 'middle',
     },
-    styles: { cellPadding: 5, fontSize: 9, valign: 'middle', lineColor: COLORS.slate300, lineWidth: 0.2, font: 'helvetica' },
+    styles: { cellPadding: 5, fontSize: 8, valign: 'middle', lineColor: COLORS.slate300, lineWidth: 0.2, font: 'helvetica' },
     alternateRowStyles: { fillColor: [248, 250, 252] as [number, number, number] },
     columnStyles: {
-      0: { cellWidth: 15, halign: 'center' },
-      1: { cellWidth: 40 },
-      2: { cellWidth: 35, halign: 'center' },
-      3: { cellWidth: 35, halign: 'center' },
-      4: { cellWidth: 55, halign: 'right' },
+      0: { cellWidth: 10, halign: 'center' },
+      1: { cellWidth: 20 },
+      2: { cellWidth: 35 },
+      3: { cellWidth: 35 },
+      4: { cellWidth: 25, halign: 'center' },
+      5: { cellWidth: 28, halign: 'center' },
+      6: { cellWidth: 29, halign: 'center' },
     },
     didParseCell: function(data) {
       if (body.length > 1 && data.row.index === body.length - 1 && data.section === 'body') {
