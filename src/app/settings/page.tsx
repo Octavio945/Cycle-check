@@ -1,7 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, List, Info, Moon, Download, Upload, AlertCircle } from 'lucide-react';
+import { ArrowLeft, List, Info, Moon, Download, Upload, AlertCircle, Trash2 } from 'lucide-react';
+import ConfirmModal from '@/components/ui/ConfirmModal';
 import { useTheme } from '@/components/ui/ThemeProvider';
 import ThemeToggle from '@/components/ui/ThemeToggle';
 import { useStore } from '@/store/useStore';
@@ -14,6 +15,7 @@ export default function SettingsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [cleanStatus, setCleanStatus] = useState<'idle' | 'cleaning' | 'success' | 'error' | 'none'>('idle');
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   // --- EXPORT ---
   const handleExport = () => {
@@ -87,6 +89,14 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-[var(--cc-bg)]">
+      <ConfirmModal
+        open={showResetConfirm}
+        title="Effacer toutes les données ?"
+        message="⚠️ Cette action est irréversible. Tous les vélos enregistrés seront supprimés et la liste des pièces sera réinitialisée aux valeurs par défaut. Assurez-vous d'avoir exporté une sauvegarde avant de continuer."
+        confirmLabel="Tout effacer"
+        onConfirm={() => { store.resetStore(); setShowResetConfirm(false); }}
+        onCancel={() => setShowResetConfirm(false)}
+      />
       <header className="flex items-center justify-between gap-4 px-4 py-4 bg-[var(--cc-surface)] border-b border-[var(--cc-border)] sticky top-0 z-10 sm:px-6">
         <div className="flex items-center gap-3">
           <Link href="/" className="p-2 -ml-2 hover:bg-[var(--cc-border-subtle)] rounded-full transition-colors md:hidden">
@@ -219,6 +229,22 @@ export default function SettingsPage() {
                 </div>
               </button>
             </div>
+
+            {/* Effacer toutes les données */}
+            <button
+              onClick={() => setShowResetConfirm(true)}
+              className="w-full flex items-center gap-4 p-4 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors text-left"
+            >
+              <div className="bg-red-100 dark:bg-red-900/40 p-2 rounded-lg">
+                <Trash2 className="w-5 h-5 text-[var(--cc-danger)]" />
+              </div>
+              <div className="flex-1">
+                <span className="block font-medium text-[var(--cc-danger)]">Effacer toutes les données</span>
+                <span className="block text-xs text-[var(--cc-text-muted)] mt-0.5">
+                  Supprimer tous les vélos et réinitialiser les pièces
+                </span>
+              </div>
+            </button>
             
           </div>
           <p className="px-2 mt-2 text-[11px] text-[var(--cc-text-faint)] text-justify">

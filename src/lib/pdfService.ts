@@ -3,7 +3,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
-import { Bike, BikePart } from '../types';
+import { Bike, BikePart, formatBikeId } from '../types';
 import { PART_PRICES } from './dataMigration';
 
 type ReportType = 'repair' | 'replace' | 'global' | 'shopping' | 'devis';
@@ -121,7 +121,7 @@ export const generatePDFReport = (bikes: Bike[], type: ReportType) => {
         else if (repairCount > 0) statusSummary = `${repairCount} pièce(s) à réparer`;
 
         const lastUpdate = format(new Date(bike.updatedAt), 'dd/MM/yyyy HH:mm');
-        tableData.push([bike.id, statusSummary, lastUpdate]);
+        tableData.push([formatBikeId(bike), statusSummary, lastUpdate]);
 
       } else {
         // Rapport spécifique (Repair ou Replace)
@@ -133,7 +133,7 @@ export const generatePDFReport = (bikes: Bike[], type: ReportType) => {
           ).join('\n');
           
           const lastUpdate = format(new Date(bike.updatedAt), 'dd/MM/yyyy HH:mm');
-          tableData.push([bike.id, partsText, lastUpdate]);
+          tableData.push([formatBikeId(bike), partsText, lastUpdate]);
         }
       }
     });
@@ -310,7 +310,7 @@ export const generateDevisReport = (bikes: Bike[]) => {
     // Lignes vélos pour cette tranche
     const bodyChunk: (string | { content: string; styles?: object })[][] = bikes.map(bike => {
       const row: (string | { content: string; styles?: object })[] = [
-        { content: bike.id, styles: { fontStyle: 'bold', textColor: COLORS.primary } }
+        { content: formatBikeId(bike), styles: { fontStyle: 'bold', textColor: COLORS.primary } }
       ];
       chunk.forEach(partName => {
         const part = bike.parts.find((p: BikePart) => p.name === partName);
@@ -562,7 +562,7 @@ export const generateDevisReport = (bikes: Bike[]) => {
       }
 
       body3.push([
-        { content: bike.id, styles: { fontStyle: 'bold', textColor: COLORS.primary } },
+        { content: formatBikeId(bike), styles: { fontStyle: 'bold', textColor: COLORS.primary } },
         { content: replaceCount > 0 ? replaceCount.toString() : '—', styles: { textColor: replaceCount > 0 ? COLORS.danger : COLORS.slate300, halign: 'center' as const, fontStyle: replaceCount > 0 ? 'bold' : 'normal' } },
         { content: repairCount > 0 ? repairCount.toString() : '—', styles: { textColor: repairCount > 0 ? COLORS.warning : COLORS.slate300, halign: 'center' as const, fontStyle: repairCount > 0 ? 'bold' : 'normal' } },
         { content: costStr, styles: { fontStyle: 'bold', textColor: COLORS.slate800, halign: 'center' as const } },
@@ -698,7 +698,7 @@ export const generateCostRankingReport = (bikes: Bike[], limit?: number) => {
 
     const totalCost = costReplace + costRepair;
     return {
-      id: bike.id,
+      id: formatBikeId(bike),
       replaceParts,
       repairParts,
       costReplace,

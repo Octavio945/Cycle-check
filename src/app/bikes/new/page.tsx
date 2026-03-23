@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Camera, ImagePlus, Bike as BikeIcon, X } from 'lucide-react';
+import { ArrowLeft, Camera, ImagePlus, Bike as BikeIcon, X, Hash } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import Image from 'next/image';
 import CameraCapture from '@/components/ui/CameraCapture';
@@ -13,10 +13,13 @@ export default function NewBikePage() {
   const router = useRouter();
   const { bikes, addBike } = useStore();
 
-  const [bikeId, setBikeId]     = useState('');
-  const [photoUrl, setPhotoUrl] = useState<string | undefined>();
-  const [error, setError]       = useState('');
-  const [cameraOpen, setCameraOpen] = useState(false);
+  // Calcul du prochain numéro séquentiel
+  const nextSeq = bikes.reduce((max, b) => Math.max(max, b.sequentialNumber ?? 0), 0) + 1;
+  const paddedSeq = String(nextSeq).padStart(3, '0');
+
+  const [stickerNumber, setStickerNumber] = useState('');
+  const [photoUrl, setPhotoUrl]           = useState<string | undefined>();
+  const [cameraOpen, setCameraOpen]       = useState(false);
 
   const galleryInputRef = useRef<HTMLInputElement>(null);
 
@@ -32,15 +35,13 @@ export default function NewBikePage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanId = bikeId.trim();
-    if (!cleanId) { setError('Veuillez saisir un numéro de vélo.'); return; }
-    if (bikes.some(b => b.id.toLowerCase() === cleanId.toLowerCase())) {
-      setError('Ce numéro de vélo existe déjà dans la flotte.');
-      return;
-    }
-    addBike(cleanId, photoUrl);
-    router.push(`/bikes/${cleanId}`);
+    const cleanSticker = stickerNumber.trim() || '--';
+    addBike(cleanSticker, photoUrl);
+    router.push(`/bikes/${paddedSeq}`);
   };
+
+  // Aperçu du futur identifiant complet
+  const previewId = `VELO-${paddedSeq}-${stickerNumber.trim() || '--'}`;
 
   return (
     <>
@@ -114,27 +115,47 @@ export default function NewBikePage() {
             />
           </section>
 
-          {/* Identifiant */}
-          <section className="bg-[var(--cc-surface)] p-5 rounded-2xl shadow-[var(--cc-shadow-sm)] border border-[var(--cc-border)]">
-            <label htmlFor="bikeId" className="block text-sm font-semibold text-[var(--cc-text)] mb-2">
-              Numéro d&apos;identification *
-            </label>
-            <div className="relative">
-              <BikeIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--cc-text-faint)]" />
-              <input
-                id="bikeId"
-                type="text"
-                value={bikeId}
-                onChange={(e) => { setBikeId(e.target.value); setError(''); }}
-                placeholder="Ex: VELO-42, BTWIN-01..."
-                className={`w-full pl-10 pr-4 py-3 bg-[var(--cc-bg)] border rounded-xl text-[var(--cc-text)] placeholder:text-[var(--cc-text-faint)] focus:outline-none focus:ring-2 focus:bg-[var(--cc-surface)] transition-all ${
-                  error
-                    ? 'border-[var(--cc-danger)] focus:ring-[var(--cc-danger)]'
-                    : 'border-[var(--cc-border)] focus:ring-[var(--cc-primary)]'
-                }`}
-              />
+          {/* Numéros */}
+          <section className="bg-[var(--cc-surface)] p-5 rounded-2xl shadow-[var(--cc-shadow-sm)] border border-[var(--cc-border)] space-y-4">
+
+            {/* Numéro séquentiel (auto) */}
+            <div>
+              <label className="block text-sm font-semibold text-[var(--cc-text)] mb-1">
+                Numéro séquentiel
+              </label>
+              <p className="text-xs text-[var(--cc-text-muted)] mb-2">Attribué automatiquement, non modifiable.</p>
+              <div className="flex items-center gap-3 px-4 py-3 bg-[var(--cc-border-subtle)] rounded-xl border border-[var(--cc-border)]">
+                <BikeIcon className="w-5 h-5 text-[var(--cc-text-faint)] shrink-0" />
+                <span className="font-bold text-[var(--cc-text)] tracking-wider">{paddedSeq}</span>
+              </div>
             </div>
-            {error && <p className="text-[var(--cc-danger)] text-sm mt-2 font-medium">{error}</p>}
+
+            {/* Numéro du sticker */}
+            <div>
+              <label htmlFor="stickerNumber" className="block text-sm font-semibold text-[var(--cc-text)] mb-1">
+                Numéro collé sur le tricycle
+              </label>
+              <p className="text-xs text-[var(--cc-text-muted)] mb-2">
+                Saisissez le numéro du sticker. Laissez vide s&apos;il n&apos;y en a pas (sera remplacé par <code className="bg-[var(--cc-border-subtle)] px-1 rounded">--</code>).
+              </p>
+              <div className="relative">
+                <Hash className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--cc-text-faint)]" />
+                <input
+                  id="stickerNumber"
+                  type="text"
+                  value={stickerNumber}
+                  onChange={(e) => setStickerNumber(e.target.value)}
+                  placeholder="Ex: B42, 7, A-03… (optionnel)"
+                  className="w-full pl-10 pr-4 py-3 bg-[var(--cc-bg)] border border-[var(--cc-border)] rounded-xl text-[var(--cc-text)] placeholder:text-[var(--cc-text-faint)] focus:outline-none focus:ring-2 focus:ring-[var(--cc-primary)] focus:bg-[var(--cc-surface)] transition-all"
+                />
+              </div>
+            </div>
+
+            {/* Aperçu du numéro complet */}
+            <div className="bg-[var(--cc-primary-light)] border border-indigo-200 dark:border-indigo-900 rounded-xl p-3 flex items-center gap-3">
+              <span className="text-xs font-semibold text-[var(--cc-primary-text)] uppercase tracking-wide shrink-0">ID complet :</span>
+              <span className="font-bold text-[var(--cc-primary)] tracking-wider truncate">{previewId}</span>
+            </div>
           </section>
 
           <button

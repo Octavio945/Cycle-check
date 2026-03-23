@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { Plus, Bike as BikeIcon, Search } from 'lucide-react';
+import { Plus, Bike as BikeIcon, Search, Trash2 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
-import { Bike, PartStatus } from '@/types';
+import { Bike, PartStatus, formatBikeId } from '@/types';
 import ThemeToggle from '@/components/ui/ThemeToggle';
+import ConfirmModal from '@/components/ui/ConfirmModal';
 
 const getBikeGlobalStatus = (bike: Bike): PartStatus => {
   if (bike.parts.some(p => p.status === 'replace')) return 'replace';
@@ -23,18 +24,37 @@ const StatusBadge = ({ status }: { status: PartStatus }) => {
 };
 
 export default function BikesPage() {
-  const bikes = useStore((state) => state.bikes);
+  const { bikes, removeBike } = useStore();
   const [filter, setFilter] = useState<'all' | 'repair' | 'replace'>('all');
   const [search, setSearch] = useState('');
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  const filteredBikes = bikes.filter((bike) => {
-    if (search && !bike.id.toLowerCase().includes(search.toLowerCase())) return false;
+  // Tri par numéro séquentiel croissant
+  const sortedBikes = [...bikes].sort(
+    (a, b) => (a.sequentialNumber ?? 0) - (b.sequentialNumber ?? 0)
+  );
+
+  const filteredBikes = sortedBikes.filter((bike) => {
+    if (search) {
+      const fullId = formatBikeId(bike).toLowerCase();
+      const seq = bike.id.toLowerCase();
+      const sticker = (bike.stickerNumber ?? '').toLowerCase();
+      const q = search.toLowerCase();
+      if (!fullId.includes(q) && !seq.includes(q) && !sticker.includes(q)) return false;
+    }
     if (filter === 'all') return true;
     const gs = getBikeGlobalStatus(bike);
     if (filter === 'repair') return gs === 'repair' || gs === 'replace';
     if (filter === 'replace') return gs === 'replace';
     return true;
   });
+
+  const bikeToDelete = bikes.find(b => b.id === deleteId);
+
+  const handleConfirmDelete = () => {
+    if (deleteId) removeBike(deleteId);
+    setDeleteId(null);
+  };
 
   const filterConfig = {
     all:     { label: 'Tous',      active: 'bg-[var(--cc-text)] text-white dark:bg-[var(--cc-border)]',                  inactive: '' },
@@ -44,6 +64,16 @@ export default function BikesPage() {
 
   return (
     <div className="min-h-screen bg-[var(--cc-bg)]">
+      {/* Modal confirmation suppression */}
+      <ConfirmModal
+        open={!!deleteId}
+        title="Supprimer ce vélo ?"
+        message={`Le vélo "${bikeToDelete ? formatBikeId(bikeToDelete) : ''}" et toutes ses données seront définitivement supprimés. Cette action est irréversible.`}
+        confirmLabel="Supprimer"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteId(null)}
+      />
+
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-4 bg-[var(--cc-surface)] border-b border-[var(--cc-border)] sticky top-0 z-10 sm:px-6 lg:px-10">
         <h1 className="text-xl font-semibold text-[var(--cc-text)]">
@@ -67,7 +97,7 @@ export default function BikesPage() {
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[var(--cc-text-faint)]" />
             <input
               type="text"
-              placeholder="Rechercher un N° de vélo..."
+              placeholder="Rechercher par numéro, sticker…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-9 pr-4 py-2.5 bg-[var(--cc-surface)] border border-[var(--cc-border)] rounded-xl text-sm text-[var(--cc-text)] placeholder:text-[var(--cc-text-faint)] focus:outline-none focus:ring-2 focus:ring-[var(--cc-primary)] shadow-sm"
@@ -108,24 +138,42 @@ export default function BikesPage() {
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {filteredBikes.map((bike) => (
-              <Link
-                key={bike.id}
-                href={`/bikes/${bike.id}`}
-                className="bg-[var(--cc-surface)] rounded-2xl p-4 shadow-[var(--cc-shadow-sm)] border border-[var(--cc-border)] hover:border-[var(--cc-primary)] hover:shadow-[var(--cc-shadow)] active:scale-95 transition-all group flex flex-col min-h-[130px]"
-              >
-                <div className="flex justify-between items-start mb-4">
-                  <div className="bg-[var(--cc-border-subtle)] p-2 rounded-lg text-[var(--cc-text-faint)] group-hover:bg-[var(--cc-primary-light)] group-hover:text-[var(--cc-primary)] transition-colors">
-                    <BikeIcon className="w-5 h-5" />
+              <div key={bike.id} className="relative group">
+                <Link
+                  href={`/bikes/${bike.id}`}
+                  className="bg-[var(--cc-surface)] rounded-2xl p-4 shadow-[var(--cc-shadow-sm)] border border-[var(--cc-border)] hover:border-[var(--cc-primary)] hover:shadow-[var(--cc-shadow)] active:scale-95 transition-all flex flex-col min-h-[130px]"
+                >
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="bg-[var(--cc-border-subtle)] p-2 rounded-lg text-[var(--cc-text-faint)] group-hover:bg-[var(--cc-primary-light)] group-hover:text-[var(--cc-primary)] transition-colors">
+                      <BikeIcon className="w-5 h-5" />
+                    </div>
+                    <StatusBadge status={getBikeGlobalStatus(bike)} />
                   </div>
-                  <StatusBadge status={getBikeGlobalStatus(bike)} />
-                </div>
-                <div className="mt-auto">
-                  <h3 className="font-bold text-[var(--cc-text)] truncate text-sm" title={bike.id}>{bike.id}</h3>
-                  <span className="text-[11px] text-[var(--cc-text-faint)] mt-0.5 block">
-                    {new Date(bike.updatedAt).toLocaleDateString('fr-FR')}
-                  </span>
-                </div>
-              </Link>
+                  <div className="mt-auto">
+                    <h3
+                      className="font-bold text-[var(--cc-text)] truncate text-sm"
+                      title={formatBikeId(bike)}
+                    >
+                      {formatBikeId(bike)}
+                    </h3>
+                    <span className="text-[11px] text-[var(--cc-text-faint)] mt-0.5 block">
+                      {new Date(bike.updatedAt).toLocaleDateString('fr-FR')}
+                    </span>
+                  </div>
+                </Link>
+
+                {/* Bouton supprimer */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleteId(bike.id);
+                  }}
+                  title="Supprimer ce vélo"
+                  className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus:opacity-100 p-1.5 bg-[var(--cc-danger-light)] text-[var(--cc-danger)] rounded-lg transition-all hover:bg-[var(--cc-danger)] hover:text-white shadow-sm z-10"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
             ))}
           </div>
         )}

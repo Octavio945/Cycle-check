@@ -5,11 +5,17 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useStore } from '@/store/useStore';
-import { ArrowLeft, Trash2, Camera, Plus } from 'lucide-react';
-import { PartStatus, BikePart } from '@/types';
+import { ArrowLeft, Trash2, Camera, Plus, Search } from 'lucide-react';
+import { PartStatus, BikePart, formatBikeId } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 import ConfirmModal from '@/components/ui/ConfirmModal';
 import ThemeToggle from '@/components/ui/ThemeToggle';
+import { PART_PRICES } from '@/lib/dataMigration';
+
+// Catalogue complet pour la suggestion dans le champ "pièce spécifique"
+const CATALOGUE_NAMES = Object.keys(PART_PRICES).sort((a, b) =>
+  a.localeCompare(b, 'fr', { sensitivity: 'base' })
+);
 
 export default function BikeDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -17,6 +23,7 @@ export default function BikeDetailPage({ params }: { params: Promise<{ id: strin
   const { bikes, updateBike, removeBike } = useStore();
   const bike = bikes.find((b) => b.id === id);
   const [newPartName, setNewPartName] = useState('');
+  const [partSearch, setPartSearch]   = useState('');
 
   // Modal state
   const [deleteBikeModal, setDeleteBikeModal]  = useState(false);
@@ -57,6 +64,22 @@ export default function BikeDetailPage({ params }: { params: Promise<{ id: strin
 
   const repairCount  = bike.parts.filter(p => p.status === 'repair').length;
   const replaceCount = bike.parts.filter(p => p.status === 'replace').length;
+
+  // Pièces triées alphabétiquement, filtrées par la recherche
+  const sortedParts = [...bike.parts].sort((a, b) =>
+    a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' })
+  );
+  const displayedParts = partSearch.trim()
+    ? sortedParts.filter(p => p.name.toLowerCase().includes(partSearch.toLowerCase()))
+    : sortedParts;
+
+  // Suggestions de pièces du catalogue pas encore sur ce vélo
+  const existingPartNames = new Set(bike.parts.map(p => p.name));
+  const suggestions = newPartName.trim().length >= 2
+    ? CATALOGUE_NAMES.filter(
+        n => n.toLowerCase().includes(newPartName.toLowerCase()) && !existingPartNames.has(n)
+      ).slice(0, 5)
+    : [];
 
   const PartRow = ({ part }: { part: BikePart }) => (
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 bg-[var(--cc-surface)] border border-[var(--cc-border)] rounded-xl mb-2 shadow-[var(--cc-shadow-sm)] gap-2">
@@ -102,7 +125,7 @@ export default function BikeDetailPage({ params }: { params: Promise<{ id: strin
       <ConfirmModal
         open={deleteBikeModal}
         title="Supprimer ce vélo ?"
-        message={`Le vélo "${bike.id}" et toutes ses données seront définitivement supprimés. Cette action est irréversible.`}
+        message={`Le vélo "${formatBikeId(bike)}" et toutes ses données seront définitivement supprimés. Cette action est irréversible.`}
         confirmLabel="Supprimer"
         onConfirm={handleConfirmDeleteBike}
         onCancel={() => setDeleteBikeModal(false)}
@@ -124,7 +147,7 @@ export default function BikeDetailPage({ params }: { params: Promise<{ id: strin
           <Link href="/bikes" className="p-2 -ml-2 hover:bg-[var(--cc-border-subtle)] rounded-full transition-colors">
             <ArrowLeft className="w-5 h-5 text-[var(--cc-text-muted)]" />
           </Link>
-          <h1 className="text-xl font-bold text-[var(--cc-text)] truncate max-w-[200px] sm:max-w-none">{bike.id}</h1>
+          <h1 className="text-xl font-bold text-[var(--cc-text)] truncate max-w-[200px] sm:max-w-none">{formatBikeId(bike)}</h1>
         </div>
         <div className="flex items-center gap-2">
           <ThemeToggle />
@@ -182,25 +205,61 @@ export default function BikeDetailPage({ params }: { params: Promise<{ id: strin
         {/* Colonne droite : diagnostic */}
         <div className="lg:col-span-2 space-y-4">
           <h2 className="text-lg font-semibold text-[var(--cc-text)]">Diagnostic des pièces</h2>
+
+          {/* Barre de recherche pièces */}
+          {bike.parts.length > 5 && (
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--cc-text-faint)]" />
+              <input
+                type="search"
+                value={partSearch}
+                onChange={(e) => setPartSearch(e.target.value)}
+                placeholder="Rechercher une pièce..."
+                className="w-full pl-9 pr-4 py-2.5 bg-[var(--cc-surface)] border border-[var(--cc-border)] rounded-xl text-sm text-[var(--cc-text)] placeholder:text-[var(--cc-text-faint)] focus:outline-none focus:ring-2 focus:ring-[var(--cc-primary)] shadow-sm"
+              />
+            </div>
+          )}
+
           <div>
-            {bike.parts.map(part => <PartRow key={part.id} part={part} />)}
+            {displayedParts.length === 0 && partSearch ? (
+              <p className="text-center text-sm text-[var(--cc-text-muted)] py-6">Aucune pièce ne correspond à &quot;{partSearch}&quot;.</p>
+            ) : (
+              displayedParts.map(part => <PartRow key={part.id} part={part} />)
+            )}
           </div>
 
           <div className="bg-[var(--cc-primary-light)] p-4 rounded-xl border border-indigo-200 dark:border-indigo-900">
             <h3 className="text-sm font-bold text-[var(--cc-primary-text)] mb-1">Ajouter une pièce spécifique</h3>
             <p className="text-xs text-[var(--cc-primary-text)] opacity-70 mb-3">Cette pièce sera uniquement visible pour ce vélo.</p>
-            <form onSubmit={handleAddSpecificPart} className="flex gap-2">
-              <input
-                type="text"
-                value={newPartName}
-                onChange={(e) => setNewPartName(e.target.value)}
-                placeholder="Ex: Porte-bagages avant"
-                className="flex-1 px-3 py-2 text-sm bg-[var(--cc-surface)] border border-[var(--cc-border)] text-[var(--cc-text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--cc-primary)] placeholder:text-[var(--cc-text-faint)]"
-              />
+            <form onSubmit={handleAddSpecificPart} className="flex gap-2 relative">
+              <div className="flex-1 relative">
+                <input
+                  type="text"
+                  value={newPartName}
+                  onChange={(e) => setNewPartName(e.target.value)}
+                  placeholder="Ex: Porte-bagages avant"
+                  className="w-full px-3 py-2 text-sm bg-[var(--cc-surface)] border border-[var(--cc-border)] text-[var(--cc-text)] rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--cc-primary)] placeholder:text-[var(--cc-text-faint)]"
+                />
+                {suggestions.length > 0 && (
+                  <ul className="absolute top-full mt-1 left-0 right-0 bg-[var(--cc-surface)] border border-[var(--cc-border)] rounded-lg shadow-lg z-20 overflow-hidden">
+                    {suggestions.map(s => (
+                      <li key={s}>
+                        <button
+                          type="button"
+                          onClick={() => setNewPartName(s)}
+                          className="w-full text-left px-3 py-2 text-sm text-[var(--cc-text)] hover:bg-[var(--cc-primary-light)] hover:text-[var(--cc-primary)] transition-colors"
+                        >
+                          {s}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
               <button
                 type="submit"
                 disabled={!newPartName.trim()}
-                className="bg-[var(--cc-primary)] text-white px-4 py-2 text-sm font-medium rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity flex items-center gap-1"
+                className="bg-[var(--cc-primary)] text-white px-4 py-2 text-sm font-medium rounded-lg disabled:opacity-50 hover:opacity-90 transition-opacity flex items-center gap-1 shrink-0"
               >
                 <Plus className="w-4 h-4" /> Ajouter
               </button>
