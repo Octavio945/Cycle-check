@@ -33,9 +33,9 @@ export const PART_PRICES: Record<string, number> = {
   'Maillot complet': 3000,
 
   // ── Freinage ────────────────────────────────────────────────────
-  'Frein complet': 2600,
+  'Frein complet': 2500,
   'Bras frein': 1000,
-  'Patin de frein': 1000,
+  'Patin de frein': 250,
   'Patin complet': 1000,
   'Câble frein': 300,
   'Câble frein complet': 300,
@@ -49,7 +49,7 @@ export const PART_PRICES: Record<string, number> = {
   'Chambre à air avant': 1200,
   'Chambre à air arrière': 1200,
   'Rayon': 2500,
-  'Rayon complet': 2500,
+  'Rayon complet': 2000,
   'Jante avant': 5000,
   'Jante arrière': 5000,
   'Axe moyeu': 1000,
@@ -63,12 +63,12 @@ export const PART_PRICES: Record<string, number> = {
   'Potence': 1500,
   'Caoutchouc guidon': 1000,
   'Fourche': 8000,
-  'Roue directrice': 3000,
+  'Roue Complete': 5000,
 
   // ── Cadre & structure ───────────────────────────────────────────
   'Cadre': 15000,
   'Cadre vélo': 15000,
-  'Cadre panneau': 12000,
+  'Cadre panneau': 0,
 
   // ── Selle & tige de selle ───────────────────────────────────────
   'Selle': 2500,
