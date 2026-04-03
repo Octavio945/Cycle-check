@@ -2,11 +2,13 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Plus, Bike as BikeIcon, Search, Trash2 } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { Bike, PartStatus, formatBikeId } from '@/types';
 import ThemeToggle from '@/components/ui/ThemeToggle';
 import ConfirmModal from '@/components/ui/ConfirmModal';
+import ImageModal from '@/components/ui/ImageModal';
 
 const getBikeGlobalStatus = (bike: Bike): PartStatus => {
   if (bike.parts.some(p => p.status === 'replace')) return 'replace';
@@ -28,6 +30,7 @@ export default function BikesPage() {
   const [filter, setFilter] = useState<'all' | 'repair' | 'replace'>('all');
   const [search, setSearch] = useState('');
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [zoomImage, setZoomImage] = useState<{ src: string; alt: string } | null>(null);
 
   // Tri par numéro séquentiel croissant
   const sortedBikes = [...bikes].sort(
@@ -73,6 +76,16 @@ export default function BikesPage() {
         onConfirm={handleConfirmDelete}
         onCancel={() => setDeleteId(null)}
       />
+
+      {/* Modal Zoom Image */}
+      {zoomImage && (
+        <ImageModal
+          src={zoomImage.src}
+          alt={zoomImage.alt}
+          isOpen={!!zoomImage}
+          onClose={() => setZoomImage(null)}
+        />
+      )}
 
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-4 bg-[var(--cc-surface)] border-b border-[var(--cc-border)] sticky top-0 z-10 sm:px-6 lg:px-10">
@@ -136,43 +149,90 @@ export default function BikesPage() {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredBikes.map((bike) => (
-              <div key={bike.id} className="relative group">
+              <div key={bike.id} className="relative group bg-[var(--cc-surface)] rounded-2xl overflow-hidden shadow-[var(--cc-shadow-sm)] border border-[var(--cc-border)] hover:border-[var(--cc-primary)] hover:shadow-[var(--cc-shadow)] transition-all">
+                {/* Lien principal couvrant toute la carte */}
                 <Link
                   href={`/bikes/${bike.id}`}
-                  className="bg-[var(--cc-surface)] rounded-2xl p-4 shadow-[var(--cc-shadow-sm)] border border-[var(--cc-border)] hover:border-[var(--cc-primary)] hover:shadow-[var(--cc-shadow)] active:scale-95 transition-all flex flex-col min-h-[130px]"
-                >
-                  <div className="flex justify-between items-start mb-4">
-                    <div className="bg-[var(--cc-border-subtle)] p-2 rounded-lg text-[var(--cc-text-faint)] group-hover:bg-[var(--cc-primary-light)] group-hover:text-[var(--cc-primary)] transition-colors">
-                      <BikeIcon className="w-5 h-5" />
+                  className="absolute inset-0 z-0"
+                  aria-label={`Détails du vélo ${formatBikeId(bike)}`}
+                />
+
+                {/* Contenu visuel */}
+                <div className="relative z-0 pointer-events-none">
+                  {/* Zone d'image */}
+                  <div className="relative aspect-[4/3] w-full bg-[var(--cc-border-subtle)] overflow-hidden border-b border-[var(--cc-border)]">
+                    {bike.photoUrl ? (
+                      <Image
+                        src={bike.photoUrl}
+                        alt={formatBikeId(bike)}
+                        fill
+                        className="object-cover transition-transform duration-500 group-hover:scale-105"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 flex items-center justify-center text-[var(--cc-text-faint)] opacity-30">
+                        <BikeIcon className="w-12 h-12" />
+                      </div>
+                    )}
+                    
+                    {/* Badge de statut superposé */}
+                    <div className="absolute top-3 right-3 scale-125 origin-top-right">
+                      <StatusBadge status={getBikeGlobalStatus(bike)} />
                     </div>
-                    <StatusBadge status={getBikeGlobalStatus(bike)} />
                   </div>
-                  <div className="mt-auto">
+
+                  {/* Infos */}
+                  <div className="p-4 flex flex-col items-start gap-1">
                     <h3
-                      className="font-bold text-[var(--cc-text)] truncate text-sm"
+                      className="font-bold text-[var(--cc-text)] truncate text-sm w-full"
                       title={formatBikeId(bike)}
                     >
                       {formatBikeId(bike)}
                     </h3>
-                    <span className="text-[11px] text-[var(--cc-text-faint)] mt-0.5 block">
-                      {new Date(bike.updatedAt).toLocaleDateString('fr-FR')}
-                    </span>
+                    <div className="flex items-center justify-between w-full">
+                      <span className="text-[11px] text-[var(--cc-text-faint)] font-medium">
+                        {new Date(bike.updatedAt).toLocaleDateString('fr-FR')}
+                      </span>
+                      {bike.stickerNumber && bike.stickerNumber !== '--' && (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] bg-[var(--cc-primary-light)] text-[var(--cc-primary)] font-bold uppercase tracking-wider">
+                          #{bike.stickerNumber}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                </Link>
+                </div>
 
-                {/* Bouton supprimer */}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDeleteId(bike.id);
-                  }}
-                  title="Supprimer ce vélo"
-                  className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus:opacity-100 p-1.5 bg-[var(--cc-danger-light)] text-[var(--cc-danger)] rounded-lg transition-all hover:bg-[var(--cc-danger)] hover:text-white shadow-sm z-10"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                {/* Boutons d'action superposés (z-index supérieur) */}
+                <div className="absolute inset-0 z-10 pointer-events-none">
+                  {/* Bouton Zoom */}
+                  {bike.photoUrl && (
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setZoomImage({ src: bike.photoUrl!, alt: formatBikeId(bike) });
+                      }}
+                      className="absolute bottom-4 right-4 p-2.5 bg-black/60 backdrop-blur-md text-white rounded-xl opacity-0 group-hover:opacity-100 transition-all hover:bg-black/80 pointer-events-auto transform translate-y-2 group-hover:translate-y-0"
+                      title="Agrandir"
+                    >
+                      <Search className="w-5 h-5" />
+                    </button>
+                  )}
+
+                  {/* Bouton supprimer */}
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setDeleteId(bike.id);
+                    }}
+                    title="Supprimer ce vélo"
+                    className="absolute top-3 right-12 opacity-0 group-hover:opacity-100 p-1.5 bg-red-100 text-red-600 rounded-lg transition-all hover:bg-red-600 hover:text-white pointer-events-auto"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             ))}
           </div>

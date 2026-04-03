@@ -1,16 +1,21 @@
 'use client';
 
-import { useState, use } from 'react';
+import { useState, use, useRef } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useStore } from '@/store/useStore';
-import { ArrowLeft, Trash2, Camera, Plus, Search, Check } from 'lucide-react';
+import { ArrowLeft, Trash2, Camera, Plus, Search, Check, ImagePlus, X } from 'lucide-react';
 import { PartStatus, BikePart, formatBikeId } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
-import ConfirmModal from '@/components/ui/ConfirmModal';
 import ThemeToggle from '@/components/ui/ThemeToggle';
+import CameraCapture from '@/components/ui/CameraCapture';
+import ImageModal from '@/components/ui/ImageModal';
+import ConfirmModal from '@/components/ui/ConfirmModal';
 import { PART_PRICES } from '@/lib/dataMigration';
+
+
+
 
 // Catalogue complet pour la suggestion dans le champ "pièce spécifique"
 const CATALOGUE_NAMES = Object.keys(PART_PRICES).sort((a, b) =>
@@ -24,8 +29,15 @@ export default function BikeDetailPage({ params }: { params: Promise<{ id: strin
   const bike = bikes.find((b) => b.id === id);
   const [newPartName, setNewPartName] = useState('');
   const [partSearch, setPartSearch]   = useState('');
+  
+  // Photo update & zoom state
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const [isZoomOpen, setIsZoomOpen] = useState(false);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+
 
   // Modal state
+
   const [deleteBikeModal, setDeleteBikeModal]  = useState(false);
   const [deletePartId, setDeletePartId]         = useState<string | null>(null);
 
@@ -61,6 +73,26 @@ export default function BikeDetailPage({ params }: { params: Promise<{ id: strin
     updateBike({ ...bike, parts: [...bike.parts, newPart] });
     setNewPartName('');
   };
+
+  const handleUpdatePhoto = (dataUrl: string) => {
+    updateBike({ ...bike, photoUrl: dataUrl });
+    setCameraOpen(false);
+  };
+
+  const handleGallerySelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (reader.result) {
+          updateBike({ ...bike, photoUrl: reader.result as string });
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+    e.target.value = '';
+  };
+
 
   const repairCount  = bike.parts.filter(p => p.status === 'repair').length;
   const replaceCount = bike.parts.filter(p => p.status === 'replace').length;
@@ -121,7 +153,36 @@ export default function BikeDetailPage({ params }: { params: Promise<{ id: strin
 
   return (
     <div className="min-h-screen bg-[var(--cc-bg)] pb-20 md:pb-0">
+      {/* Caméra */}
+      {cameraOpen && (
+        <CameraCapture
+          onCapture={handleUpdatePhoto}
+          onClose={() => setCameraOpen(false)}
+        />
+      )}
+
+      {/* Zoom Image */}
+      {bike.photoUrl && (
+        <ImageModal
+          src={bike.photoUrl}
+          alt={formatBikeId(bike)}
+          isOpen={isZoomOpen}
+          onClose={() => setIsZoomOpen(false)}
+        />
+      )}
+
+
+      {/* Input de gallerie caché */}
+      <input
+        type="file"
+        accept="image/*"
+        className="hidden"
+        ref={galleryInputRef}
+        onChange={handleGallerySelect}
+      />
+
       {/* Modal : supprimer vélo */}
+
       <ConfirmModal
         open={deleteBikeModal}
         title="Supprimer ce vélo ?"
@@ -165,16 +226,60 @@ export default function BikeDetailPage({ params }: { params: Promise<{ id: strin
 
         {/* Colonne gauche : photo + résumé */}
         <div className="space-y-4">
-          <div className="w-full aspect-square max-w-xs mx-auto lg:max-w-none rounded-2xl bg-[var(--cc-border-subtle)] relative flex items-center justify-center overflow-hidden border border-[var(--cc-border)] shadow-[var(--cc-shadow-sm)]">
+          <div 
+            className="w-full aspect-square max-w-xs mx-auto lg:max-w-none rounded-2xl bg-[var(--cc-border-subtle)] relative flex items-center justify-center overflow-hidden border border-[var(--cc-border)] shadow-[var(--cc-shadow-sm)] group cursor-zoom-in"
+            onClick={() => bike.photoUrl && setIsZoomOpen(true)}
+          >
             {bike.photoUrl ? (
-              <Image src={bike.photoUrl} alt={`Photo du vélo ${bike.id}`} fill className="object-cover" />
+              <>
+                <Image src={bike.photoUrl} alt={`Photo du vélo ${bike.id}`} fill className="object-cover" />
+                <div 
+                  className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-3"
+                >
+
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setCameraOpen(true);
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-white text-black rounded-xl font-semibold text-sm hover:scale-105 transition-transform"
+                  >
+                    <Camera className="w-4 h-4" />
+                    Changer (Caméra)
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      galleryInputRef.current?.click();
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 bg-white/20 text-white backdrop-blur-md rounded-xl font-semibold text-sm border border-white/30 hover:scale-105 transition-transform"
+                  >
+
+                    <ImagePlus className="w-4 h-4" />
+                    Changer (Galerie)
+                  </button>
+                </div>
+              </>
             ) : (
-              <div className="flex flex-col items-center text-[var(--cc-text-faint)]">
-                <Camera className="w-10 h-10 mb-2 opacity-50" />
-                <span className="text-sm">Aucune photo</span>
+              <div className="flex flex-col items-center gap-4">
+                <div className="flex flex-col items-center text-[var(--cc-text-faint)]">
+                  <Camera className="w-10 h-10 mb-2 opacity-50" />
+                  <span className="text-sm">Aucune photo</span>
+                </div>
+                <div className="flex flex-col gap-2 w-full px-8">
+                  <button
+                     onClick={() => setCameraOpen(true)}
+                     className="flex items-center justify-center gap-2 py-2.5 bg-[var(--cc-primary)] text-white rounded-xl font-medium text-xs hover:opacity-90 active:scale-95 transition-all"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                    Prendre une photo
+                  </button>
+                </div>
               </div>
             )}
           </div>
+
 
           {(repairCount > 0 || replaceCount > 0) ? (
             <div className="bg-[var(--cc-warning-light)] p-4 rounded-xl border border-amber-200 dark:border-amber-900">

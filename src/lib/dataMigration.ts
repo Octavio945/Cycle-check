@@ -63,7 +63,8 @@ export const PART_PRICES: Record<string, number> = {
   'Potence': 1500,
   'Caoutchouc guidon': 1000,
   'Fourche': 8000,
-  'Roue Complete': 5000,
+  'Roue complète arrière': 5000,
+  'Roue Complete avant': 5000,
 
   // ── Cadre & structure ───────────────────────────────────────────
   'Cadre': 15000,
@@ -109,7 +110,7 @@ export const cleanDuplicateData = (state: AppState) => {
   // Dédupliquer les pièces de base (si deux "Bille centrale" existent après merge)
   const uniqueBaseParts = [];
   const seenNames = new Set<string>();
-  
+
   for (const part of newBaseParts) {
     if (!seenNames.has(part.name)) {
       uniqueBaseParts.push(part);
@@ -134,13 +135,13 @@ export const cleanDuplicateData = (state: AppState) => {
     // On garde le pire statut (replace > repair > good)
     const STATUS_WEIGHT = { replace: 2, repair: 1, good: 0 };
     const uniquePartsMap = new Map();
-    
+
     newParts.forEach((part: BikePart) => {
       if (uniquePartsMap.has(part.name)) {
         bikeChanged = true;
         const existing = uniquePartsMap.get(part.name);
-        const wNew = STATUS_WEIGHT[part.status as 'replace'|'repair'|'good'] || 0;
-        const wOld = STATUS_WEIGHT[existing.status as 'replace'|'repair'|'good'] || 0;
+        const wNew = STATUS_WEIGHT[part.status as 'replace' | 'repair' | 'good'] || 0;
+        const wOld = STATUS_WEIGHT[existing.status as 'replace' | 'repair' | 'good'] || 0;
         if (wNew > wOld) {
           uniquePartsMap.set(part.name, part);
         }

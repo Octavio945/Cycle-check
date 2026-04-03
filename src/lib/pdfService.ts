@@ -799,3 +799,211 @@ export const generateCostRankingReport = (bikes: Bike[], limit?: number) => {
   const fileName = `${prefix}_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`;
   doc.save(fileName);
 };
+
+// ---------------------------------------------------------------------------
+// Rapport Personnalisé (Sélection de Vélos + Frais Manuels)
+// ---------------------------------------------------------------------------
+export const generateCustomSelectionReport = (bikes: Bike[], manualCosts: { name: string; price: number }[]) => {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'a4',
+  });
+
+  const drawHeader = () => {
+    doc.setFillColor(...COLORS.slate800);
+    doc.rect(0, 0, 210, 20, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(16);
+    doc.setFont('helvetica', 'bold');
+    doc.text('CycleCheck', 14, 13);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'normal');
+    const dateStr = format(new Date(), 'dd MMMM yyyy - HH:mm', { locale: fr });
+    const rightAlignId = doc.getStringUnitWidth(`Généré le: ${dateStr}`) * 10 / doc.internal.scaleFactor;
+    doc.text(`Généré le: ${dateStr}`, 210 - 14 - rightAlignId, 13);
+  };
+
+  const drawFooter = (data: any) => {
+    const pageCount = (doc.internal as any).getNumberOfPages();
+    doc.setFontSize(8);
+    doc.setTextColor(...COLORS.slate500);
+    doc.text(
+      `Page ${data.pageNumber} / ${pageCount}`,
+      data.settings.margin.left,
+      doc.internal.pageSize.height - 10
+    );
+  };
+
+  drawHeader();
+
+  // 1. Calculer les coûts pour chaque vélo
+  let bikeCosts = bikes.map(bike => {
+    let replaceParts: string[] = [];
+    let repairParts: string[] = [];
+    let costReplace = 0;
+    let costRepair = 0;
+
+    bike.parts.forEach((p: BikePart) => {
+      if (p.status === 'replace') {
+        replaceParts.push(p.name);
+        costReplace += (PART_PRICES[p.name] || 0);
+      } else if (p.status === 'repair') {
+        repairParts.push(p.name);
+        costRepair += (PART_PRICES[p.name] || 0);
+      }
+    });
+
+    const totalCost = costReplace + costRepair;
+    return {
+      id: formatBikeId(bike),
+      replaceParts,
+      repairParts,
+      costReplace,
+      costRepair,
+      totalCost
+    };
+  });
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.setTextColor(...COLORS.slate800);
+  doc.text('Rapport de Devis Personnalisé', 14, 35);
+
+  const body: (string | { content: string; styles?: object; colSpan?: number })[][] = [];
+  let sumReplaceCostShown = 0;
+  let sumReplaceAll = 0;
+  let sumRepairAll = 0;
+
+  bikeCosts.forEach((b, index) => {
+    sumReplaceCostShown += b.costReplace;
+    sumReplaceAll += b.replaceParts.length;
+    sumRepairAll += b.repairParts.length;
+
+    let costStr = '';
+    if (b.costReplace > 0) {
+      costStr = `${b.costReplace} FCFA`;
+    } else if (b.costReplace === 0 && b.costRepair === 0) {
+      costStr = '—';
+    } else {
+      costStr = '0 FCFA'; // Only repairs
+    }
+
+    body.push([
+      { content: `#${index + 1}`, styles: { textColor: COLORS.slate500, fontStyle: 'bold', halign: 'center' as const } },
+      { content: b.id, styles: { fontStyle: 'bold', textColor: COLORS.primary } },
+      { content: b.replaceParts.length > 0 ? b.replaceParts.join('\n') : '—', styles: { textColor: b.replaceParts.length > 0 ? COLORS.danger : COLORS.slate300, halign: 'left' as const, fontSize: 8 } },
+      { content: b.repairParts.length > 0 ? b.repairParts.join('\n') : '—', styles: { textColor: b.repairParts.length > 0 ? COLORS.warning : COLORS.slate300, halign: 'left' as const, fontSize: 8 } },
+      { content: costStr, styles: { fontStyle: 'bold', textColor: COLORS.slate800, halign: 'center' as const } },
+      '',
+      ''
+    ]);
+  });
+
+  const totalManualCost = manualCosts.reduce((acc, mc) => acc + mc.price, 0);
+  const grandTotal = sumReplaceCostShown + totalManualCost;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.setTextColor(...COLORS.slate500);
+  doc.text(`Une sélection de ${bikes.length} vélo(s) et frais additionnels.`, 14, 42);
+
+  // Le Prix Général en haut
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.setTextColor(...COLORS.primary);
+  doc.text(`TOTAL GÉNÉRAL : ${grandTotal} FCFA`, 196, 42, { align: 'right' });
+
+  if (body.length === 0) {
+    body.push([
+      { content: "Aucun vélo sélectionné.", colSpan: 7, styles: { halign: 'center' as const, textColor: COLORS.slate500 } }
+    ]);
+  } else {
+    body.push([
+      { content: `TOTAL VÉLOS (${body.length})`, colSpan: 2, styles: { fontStyle: 'bold', textColor: COLORS.slate800 } },
+      { content: `${sumReplaceAll} pièces`, styles: { fontStyle: 'bold', textColor: COLORS.danger, halign: 'center' as const } },
+      { content: `${sumRepairAll} pièces`, styles: { fontStyle: 'bold', textColor: COLORS.warning, halign: 'center' as const } },
+      { content: `${sumReplaceCostShown} FCFA`, styles: { fontStyle: 'bold', textColor: COLORS.primary, halign: 'center' as const } },
+      '',
+      ''
+    ]);
+  }
+
+  // Tracer le tableau
+  autoTable(doc, {
+    startY: 50,
+    head: [['N°', 'Vélo', 'Pièces à Remplacer', 'Pièces à Réparer', "Coût Pièces", "Réparations", "Total Vélo"]],
+    body: body as any,
+    theme: 'grid',
+    headStyles: {
+      fillColor: COLORS.slate800,
+      textColor: 255 as unknown as [number, number, number],
+      fontStyle: 'bold',
+      fontSize: 8,
+      halign: 'center',
+      valign: 'middle',
+    },
+    styles: { cellPadding: 5, fontSize: 8, valign: 'middle', lineColor: COLORS.slate300, lineWidth: 0.2, font: 'helvetica' },
+    alternateRowStyles: { fillColor: [248, 250, 252] as [number, number, number] },
+    columnStyles: {
+      0: { cellWidth: 10, halign: 'center' },
+      1: { cellWidth: 20 },
+      2: { cellWidth: 35 },
+      3: { cellWidth: 35 },
+      4: { cellWidth: 25, halign: 'center' },
+      5: { cellWidth: 28, halign: 'center' },
+      6: { cellWidth: 29, halign: 'center' },
+    },
+    didParseCell: function(data) {
+      if (body.length > 1 && data.row.index === body.length - 1 && data.section === 'body') {
+        data.cell.styles.fillColor = [241, 245, 249] as [number, number, number];
+      }
+    },
+    didDrawPage: drawFooter,
+  });
+
+  // Tracer les coûts manuels et le grand total en bas
+  let finalY = (doc as any).lastAutoTable.finalY + 15;
+
+  if (manualCosts.length > 0) {
+    autoTable(doc, {
+      startY: finalY,
+      head: [['Poste de dépense supplémentaire (Frais Manuels)', 'Montant (FCFA)']],
+      body: [
+        ...manualCosts.map(mc => [mc.name, `${mc.price} FCFA`]),
+        [{ content: 'TOTAL FRAIS MANUELS', styles: { fontStyle: 'bold', textColor: COLORS.slate800 } }, { content: `${totalManualCost} FCFA`, styles: { fontStyle: 'bold', textColor: COLORS.slate800 } }]
+      ],
+      theme: 'grid',
+      headStyles: {
+        fillColor: COLORS.slate500,
+        textColor: 255,
+        fontStyle: 'bold',
+        fontSize: 9,
+      },
+      styles: { cellPadding: 4, fontSize: 9, lineColor: COLORS.slate300, lineWidth: 0.1 },
+      columnStyles: {
+        0: { cellWidth: 142 },
+        1: { cellWidth: 40, halign: 'right' },
+      },
+      didDrawPage: drawFooter,
+    });
+    finalY = (doc as any).lastAutoTable.finalY + 15;
+  }
+
+  // Boîte Total Général
+  doc.setFillColor(241, 245, 249); // slate-100
+  doc.rect(14, finalY, 182, 16, 'F');
+  doc.setDrawColor(...COLORS.slate300);
+  doc.rect(14, finalY, 182, 16, 'S');
+  
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(14);
+  doc.setTextColor(...COLORS.slate800);
+  doc.text('TOTAL GÉNÉRAL DU DEVIS :', 20, finalY + 11);
+  
+  doc.setTextColor(...COLORS.primary);
+  doc.text(`${grandTotal} FCFA`, 190, finalY + 11, { align: 'right' });
+
+  const fileName = `CycleCheck_Devis_Custom_${format(new Date(), 'yyyyMMdd_HHmm')}.pdf`;
+  doc.save(fileName);
+};

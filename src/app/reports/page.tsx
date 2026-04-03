@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, FileOutput, Wrench, PenTool, ClipboardList, ShoppingCart, Receipt, ListOrdered, Trophy } from 'lucide-react';
+import { ArrowLeft, FileOutput, Wrench, PenTool, Calculator, ClipboardList, ShoppingCart, Receipt, ListOrdered, Trophy } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 import { generatePDFReport, generateDevisReport, generateCostRankingReport } from '@/lib/pdfService';
 import { useState } from 'react';
@@ -58,6 +58,28 @@ export default function ReportsPage() {
         <p className="text-[var(--cc-text-muted)] text-sm">
           Générez des rapports PDF pour planifier vos interventions. Chaque rapport liste les vélos concernés et les pièces à traiter.
         </p>
+
+        {/* Rapport Personnalisé */}
+        <Link
+          href="/reports/custom"
+          className="w-full bg-[var(--cc-surface)] p-5 rounded-2xl shadow-[var(--cc-shadow-sm)] border-2 border-[var(--cc-border)] hover:border-indigo-400 hover:bg-[var(--cc-primary-light)] active:scale-[0.98] transition-all group text-left relative overflow-hidden flex items-center justify-between"
+        >
+          <div className="absolute top-0 right-0 w-28 h-28 bg-indigo-100 dark:bg-indigo-950 rounded-bl-full opacity-40 group-hover:scale-110 transition-transform -z-0" />
+          <div className="relative z-10 flex items-center gap-4">
+            <div className="bg-[var(--cc-primary-light)] p-3 rounded-xl">
+              <Calculator className="w-6 h-6 text-[var(--cc-primary)]" />
+            </div>
+            <div>
+              <h2 className="font-bold text-[var(--cc-text)] text-base">Rapport Personnalisé (Sélection)</h2>
+              <p className="text-sm text-[var(--cc-text-muted)]">Sélectionnez vos vélos et ajoutez des frais manuels</p>
+            </div>
+          </div>
+          <div className="relative z-10">
+            <span className="text-[var(--cc-primary)] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <span className="text-xl">→</span>
+            </span>
+          </div>
+        </Link>
 
         {/* Rapport Global */}
         <button
