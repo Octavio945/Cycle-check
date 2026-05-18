@@ -1,260 +1,309 @@
 'use client';
 
-import Link from 'next/link';
-import { ArrowLeft, FileOutput, Wrench, PenTool, Calculator, ClipboardList, ShoppingCart, Receipt, ListOrdered, Trophy } from 'lucide-react';
-import { useStore } from '@/store/useStore';
-import { generatePDFReport, generateDevisReport, generateCostRankingReport } from '@/lib/pdfService';
 import { useState } from 'react';
-import ThemeToggle from '@/components/ui/ThemeToggle';
+import { Download, Package, ArrowLeftRight, AlertTriangle, Clock, Layers, Building2, User, Calendar } from 'lucide-react';
+import { getEquipment, getLoans, getCategories, getDepartments, getEmployees } from '@/lib/supabase';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
+
+const HEADER_COLOR: [number, number, number] = [59, 130, 246];
+const TODAY = format(new Date(), 'dd MMMM yyyy', { locale: fr });
+
+async function generatePDF(title: string, columns: string[], rows: string[][], subtitle?: string) {
+  const { jsPDF } = await import('jspdf');
+  const autoTable = (await import('jspdf-autotable')).default;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+
+  doc.setFillColor(...HEADER_COLOR);
+  doc.rect(0, 0, 297, 22, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.text('EquiTrack', 14, 10);
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`— ${title}`, 50, 10);
+  doc.setFontSize(9);
+  doc.text(`Généré le ${TODAY}`, 14, 17);
+  if (subtitle) doc.text(subtitle, 297 - 14, 17, { align: 'right' });
+
+  autoTable(doc, {
+    startY: 26,
+    head: [columns],
+    body: rows,
+    styles: { fontSize: 9, cellPadding: 3 },
+    headStyles: { fillColor: HEADER_COLOR, textColor: 255, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [248, 250, 252] },
+    margin: { left: 14, right: 14 },
+  });
+
+  doc.save(`equitrack-${title.toLowerCase().replace(/\s+/g, '-')}-${format(new Date(), 'yyyyMMdd')}.pdf`);
+}
 
 export default function ReportsPage() {
-  const bikes = useStore((state) => state.bikes);
-  const [generating, setGenerating] = useState<'repair' | 'replace' | 'global' | 'shopping' | 'devis' | 'cost_all' | 'cost_top20' | null>(null);
+  const [loading, setLoading] = useState<string | null>(null);
+  const [empFilter, setEmpFilter] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+  const [error, setError] = useState('');
 
-  const bikesTotal = bikes.length;
-  const bikesWithRepair  = bikes.filter(b => b.parts.some(p => p.status === 'repair')).length;
-  const bikesWithReplace = bikes.filter(b => b.parts.some(p => p.status === 'replace')).length;
-
-  const handleGenerate = async (type: 'repair' | 'replace' | 'global' | 'shopping') => {
-    setGenerating(type);
+  const run = async (key: string, fn: () => Promise<void>) => {
+    setLoading(key);
+    setError('');
     try {
-      generatePDFReport(bikes, type);
+      await fn();
+    } catch (e: unknown) {
+      setError('Erreur : ' + (e instanceof Error ? e.message : String(e)));
     } finally {
-      setTimeout(() => setGenerating(null), 1000);
+      setLoading(null);
     }
   };
 
-  const handleGenerateDevis = async () => {
-    setGenerating('devis');
-    try {
-      generateDevisReport(bikes);
-    } finally {
-      setTimeout(() => setGenerating(null), 1000);
-    }
-  };
-
-  const handleGenerateCostRanking = async (top20: boolean) => {
-    setGenerating(top20 ? 'cost_top20' : 'cost_all');
-    try {
-      generateCostRankingReport(bikes, top20 ? 20 : undefined);
-    } finally {
-      setTimeout(() => setGenerating(null), 1000);
-    }
-  };
+  const reports = [
+    {
+      key: 'inventory',
+      icon: Package,
+      title: 'Inventaire Général',
+      description: 'Liste complète de tous les équipements avec leur statut et état.',
+      color: '#3b82f6',
+      bg: 'rgba(59,130,246,0.08)',
+      extraUI: null as React.ReactNode,
+      action: () => run('inventory', async () => {
+        const equip = await getEquipment();
+        const STATUS_FR: Record<string, string> = { available: 'Disponible', borrowed: 'Emprunté', broken: 'En panne', maintenance: 'En maintenance' };
+        const COND_FR: Record<string, string> = { good: 'Bon état', fair: 'Correct', poor: 'Mauvais état' };
+        const rows = equip.map(e => [
+          `${e.category?.code}-${e.display_number}`,
+          e.category?.name ?? '—',
+          e.serial_number ?? '—',
+          STATUS_FR[e.status] ?? e.status,
+          COND_FR[e.condition] ?? e.condition,
+          e.location ?? '—',
+          e.acquisition_date ? format(new Date(e.acquisition_date), 'dd/MM/yyyy') : '—',
+        ]);
+        await generatePDF('Inventaire Général', ['Numéro', 'Catégorie', 'N° Série', 'Statut', 'État', 'Localisation', 'Acquisition'], rows, `${equip.length} équipements`);
+      }),
+    },
+    {
+      key: 'active-loans',
+      icon: ArrowLeftRight,
+      title: 'Emprunts Actifs',
+      description: 'Qui a quoi en ce moment — liste de tous les emprunts en cours.',
+      color: '#8b5cf6',
+      bg: 'rgba(139,92,246,0.08)',
+      extraUI: null as React.ReactNode,
+      action: () => run('active-loans', async () => {
+        const loans = await getLoans('active');
+        const rows: string[][] = [];
+        for (const loan of loans) {
+          for (const item of loan.items ?? []) {
+            rows.push([
+              loan.employee?.name ?? '—',
+              loan.employee?.department?.name ?? '—',
+              `${item.equipment?.category?.code}-${item.equipment?.display_number}`,
+              item.equipment?.category?.name ?? '—',
+              format(new Date(loan.checkout_date), 'dd/MM/yyyy'),
+              loan.expected_return_date ? format(new Date(loan.expected_return_date), 'dd/MM/yyyy') : '—',
+            ]);
+          }
+        }
+        await generatePDF('Emprunts Actifs', ['Employé', 'Service', 'Équipement', 'Catégorie', 'Date emprunt', 'Retour prévu'], rows, `${loans.length} emprunts actifs`);
+      }),
+    },
+    {
+      key: 'broken',
+      icon: AlertTriangle,
+      title: 'Équipements en Panne',
+      description: 'Liste de tous les équipements avec le statut "En panne".',
+      color: '#ef4444',
+      bg: 'rgba(239,68,68,0.08)',
+      extraUI: null as React.ReactNode,
+      action: () => run('broken', async () => {
+        const equip = await getEquipment({ status: 'broken' });
+        const rows = equip.map(e => [
+          `${e.category?.code}-${e.display_number}`,
+          e.category?.name ?? '—',
+          e.serial_number ?? '—',
+          e.location ?? '—',
+          e.description ?? '—',
+        ]);
+        await generatePDF('Équipements en Panne', ['Numéro', 'Catégorie', 'N° Série', 'Localisation', 'Description'], rows, `${equip.length} équipements en panne`);
+      }),
+    },
+    {
+      key: 'period',
+      icon: Clock,
+      title: 'Historique sur Période',
+      description: 'Tous les emprunts dans une plage de dates sélectionnée.',
+      color: '#f59e0b',
+      bg: 'rgba(245,158,11,0.08)',
+      get extraUI() {
+        return (
+          <div className="flex gap-2 mt-3 flex-wrap">
+            <input type="date" className="et-input" style={{ width: '140px', fontSize: '0.8rem' }} value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+            <span style={{ color: 'var(--et-text-muted)', alignSelf: 'center' }}>→</span>
+            <input type="date" className="et-input" style={{ width: '140px', fontSize: '0.8rem' }} value={dateTo} onChange={e => setDateTo(e.target.value)} />
+          </div>
+        );
+      },
+      action: () => run('period', async () => {
+        const loans = await getLoans();
+        const filtered = loans.filter(l => {
+          const d = l.checkout_date;
+          return (!dateFrom || d >= dateFrom) && (!dateTo || d <= dateTo);
+        });
+        const rows: string[][] = [];
+        for (const loan of filtered) {
+          rows.push([
+            loan.employee?.name ?? '—',
+            loan.employee?.department?.name ?? '—',
+            String(loan.items?.length ?? 0),
+            format(new Date(loan.checkout_date), 'dd/MM/yyyy'),
+            loan.return_date ? format(new Date(loan.return_date), 'dd/MM/yyyy') : '—',
+            loan.status === 'active' ? 'Actif' : 'Retourné',
+          ]);
+        }
+        const range = dateFrom || dateTo ? `${dateFrom || '…'} → ${dateTo || '…'}` : 'toutes dates';
+        await generatePDF('Historique Emprunts', ['Employé', 'Service', 'Nb items', 'Date emprunt', 'Date retour', 'Statut'], rows, range);
+      }),
+    },
+    {
+      key: 'by-category',
+      icon: Layers,
+      title: 'Rapport par Catégorie',
+      description: 'Statistiques de disponibilité et d\'utilisation par catégorie.',
+      color: '#10b981',
+      bg: 'rgba(16,185,129,0.08)',
+      extraUI: null as React.ReactNode,
+      action: () => run('by-category', async () => {
+        const [cats, equip] = await Promise.all([getCategories(), getEquipment()]);
+        const rows = cats.map(cat => {
+          const items = equip.filter(e => e.category_id === cat.id);
+          const available = items.filter(e => e.status === 'available').length;
+          const borrowed = items.filter(e => e.status === 'borrowed').length;
+          const broken = items.filter(e => e.status === 'broken').length;
+          const maintenance = items.filter(e => e.status === 'maintenance').length;
+          const pct = items.length > 0 ? Math.round((available / items.length) * 100) : 0;
+          return [cat.name, cat.code, String(items.length), String(available), String(borrowed), String(broken), String(maintenance), `${pct}%`];
+        });
+        await generatePDF('Rapport par Catégorie', ['Catégorie', 'Code', 'Total', 'Disponibles', 'Empruntés', 'En panne', 'Maintenance', 'Dispo %'], rows);
+      }),
+    },
+    {
+      key: 'by-department',
+      icon: Building2,
+      title: 'Rapport par Service',
+      description: 'Utilisation des équipements par service / département.',
+      color: '#06b6d4',
+      bg: 'rgba(6,182,212,0.08)',
+      extraUI: null as React.ReactNode,
+      action: () => run('by-department', async () => {
+        const [depts, loans, emps] = await Promise.all([getDepartments(), getLoans(), getEmployees()]);
+        const rows = depts.map(dept => {
+          const deptEmps = emps.filter(e => e.department_id === dept.id);
+          const deptEmpIds = new Set(deptEmps.map(e => e.id));
+          const deptLoans = loans.filter(l => deptEmpIds.has(l.employee_id));
+          const active = deptLoans.filter(l => l.status === 'active').length;
+          const totalItems = deptLoans.reduce((s, l) => s + (l.items?.length ?? 0), 0);
+          return [dept.name, String(deptEmps.length), String(deptLoans.length), String(active), String(totalItems)];
+        });
+        await generatePDF('Rapport par Service', ['Service', 'Employés', 'Total emprunts', 'Emprunts actifs', 'Total items empruntés'], rows);
+      }),
+    },
+    {
+      key: 'by-employee',
+      icon: User,
+      title: 'Rapport par Employé',
+      description: 'Historique détaillé pour un employé sélectionné.',
+      color: '#f59e0b',
+      bg: 'rgba(245,158,11,0.08)',
+      get extraUI() {
+        return (
+          <div className="mt-3">
+            <input
+              type="text"
+              className="et-input"
+              style={{ fontSize: '0.8rem' }}
+              placeholder="Filtrer par nom d'employé…"
+              value={empFilter}
+              onChange={e => setEmpFilter(e.target.value)}
+            />
+          </div>
+        );
+      },
+      action: () => run('by-employee', async () => {
+        const [loans, emps] = await Promise.all([getLoans(), getEmployees()]);
+        const q = empFilter.trim().toLowerCase();
+        const matchingEmps = q ? emps.filter(e => e.name.toLowerCase().includes(q)) : emps;
+        const matchingIds = new Set(matchingEmps.map(e => e.id));
+        const filtered = loans.filter(l => matchingIds.has(l.employee_id));
+        const rows: string[][] = [];
+        for (const loan of filtered) {
+          for (const item of loan.items ?? []) {
+            rows.push([
+              loan.employee?.name ?? '—',
+              loan.employee?.department?.name ?? '—',
+              `${item.equipment?.category?.code}-${item.equipment?.display_number}`,
+              item.equipment?.category?.name ?? '—',
+              format(new Date(loan.checkout_date), 'dd/MM/yyyy'),
+              loan.return_date ? format(new Date(loan.return_date), 'dd/MM/yyyy') : '—',
+              loan.status === 'active' ? 'Actif' : 'Retourné',
+            ]);
+          }
+        }
+        await generatePDF('Rapport par Employé', ['Employé', 'Service', 'Équipement', 'Catégorie', 'Date emprunt', 'Retour', 'Statut'], rows, q ? `Filtre: "${q}"` : 'Tous les employés');
+      }),
+    },
+  ];
 
   return (
-    <div className="min-h-screen bg-[var(--cc-bg)]">
-      <header className="flex items-center justify-between gap-4 px-4 py-4 bg-[var(--cc-surface)] border-b border-[var(--cc-border)] sticky top-0 z-10 sm:px-6">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="p-2 -ml-2 hover:bg-[var(--cc-border-subtle)] rounded-full transition-colors md:hidden">
-            <ArrowLeft className="w-5 h-5 text-[var(--cc-text-muted)]" />
-          </Link>
-          <h1 className="text-xl font-semibold text-[var(--cc-text)]">Rapports PDF</h1>
+    <div className="fade-in">
+      <div className="page-header">
+        <h1 className="page-title">Rapports</h1>
+        <p className="page-subtitle">Générez des rapports PDF à partir des données en temps réel</p>
+      </div>
+
+      <div className="px-4 md:px-7 pb-8 space-y-4">
+        {error && <div className="alert alert-danger">{error}</div>}
+
+        <div className="alert alert-info">
+          <Calendar className="w-4 h-4 shrink-0" />
+          <span>Les rapports sont générés à partir des données actuelles et exportés en PDF. Date : {TODAY}</span>
         </div>
-        <ThemeToggle />
-      </header>
 
-      <div className="max-w-2xl mx-auto px-4 py-6 sm:px-6 space-y-5">
-        <p className="text-[var(--cc-text-muted)] text-sm">
-          Générez des rapports PDF pour planifier vos interventions. Chaque rapport liste les vélos concernés et les pièces à traiter.
-        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {reports.map(({ key, icon: Icon, title, description, color, bg, action, extraUI }) => (
+            <div key={key} className="card p-5 flex flex-col gap-4">
+              <div className="flex items-start gap-3">
+                <div
+                  className="flex items-center justify-center w-11 h-11 rounded-xl shrink-0"
+                  style={{ background: bg }}
+                >
+                  <Icon className="w-5 h-5" style={{ color }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-sm" style={{ color: 'var(--et-text)' }}>{title}</p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--et-text-muted)' }}>{description}</p>
+                </div>
+              </div>
 
-        {/* Rapport Personnalisé */}
-        <Link
-          href="/reports/custom"
-          className="w-full bg-[var(--cc-surface)] p-5 rounded-2xl shadow-[var(--cc-shadow-sm)] border-2 border-[var(--cc-border)] hover:border-indigo-400 hover:bg-[var(--cc-primary-light)] active:scale-[0.98] transition-all group text-left relative overflow-hidden flex items-center justify-between"
-        >
-          <div className="absolute top-0 right-0 w-28 h-28 bg-indigo-100 dark:bg-indigo-950 rounded-bl-full opacity-40 group-hover:scale-110 transition-transform -z-0" />
-          <div className="relative z-10 flex items-center gap-4">
-            <div className="bg-[var(--cc-primary-light)] p-3 rounded-xl">
-              <Calculator className="w-6 h-6 text-[var(--cc-primary)]" />
-            </div>
-            <div>
-              <h2 className="font-bold text-[var(--cc-text)] text-base">Rapport Personnalisé (Sélection)</h2>
-              <p className="text-sm text-[var(--cc-text-muted)]">Sélectionnez vos vélos et ajoutez des frais manuels</p>
-            </div>
-          </div>
-          <div className="relative z-10">
-            <span className="text-[var(--cc-primary)] flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-              <span className="text-xl">→</span>
-            </span>
-          </div>
-        </Link>
+              {extraUI && <div>{extraUI}</div>}
 
-        {/* Rapport Global */}
-        <button
-          onClick={() => handleGenerate('global')}
-          disabled={generating !== null}
-          className="w-full bg-[var(--cc-surface)] p-5 rounded-2xl shadow-[var(--cc-shadow-sm)] border-2 border-[var(--cc-border)] hover:border-indigo-400 hover:bg-[var(--cc-primary-light)] active:scale-[0.98] transition-all group text-left relative overflow-hidden flex items-center justify-between disabled:opacity-70"
-        >
-          <div className="absolute top-0 right-0 w-28 h-28 bg-indigo-100 dark:bg-indigo-950 rounded-bl-full opacity-40 group-hover:scale-110 transition-transform -z-0" />
-          <div className="relative z-10 flex items-center gap-4">
-            <div className="bg-[var(--cc-primary-light)] p-3 rounded-xl">
-              <ClipboardList className="w-6 h-6 text-[var(--cc-primary)]" />
+              <button
+                onClick={action}
+                disabled={loading === key}
+                className="btn btn-secondary btn-sm w-full justify-center mt-auto"
+              >
+                {loading === key ? (
+                  <div className="spinner" style={{ width: '0.875rem', height: '0.875rem' }} />
+                ) : (
+                  <Download className="w-3.5 h-3.5" />
+                )}
+                {loading === key ? 'Génération…' : 'Générer PDF'}
+              </button>
             </div>
-            <div>
-              <h2 className="font-bold text-[var(--cc-text)] text-base">Inventaire Global</h2>
-              <p className="text-sm text-[var(--cc-text-muted)]">{bikesTotal} vélo{bikesTotal !== 1 ? 's' : ''} au total</p>
-            </div>
-          </div>
-          <div className="relative z-10">
-            {generating === 'global' ? (
-              <span className="text-xs text-[var(--cc-primary)] font-medium animate-pulse">Génération...</span>
-            ) : (
-              <FileOutput className="w-5 h-5 text-[var(--cc-primary)] opacity-0 group-hover:opacity-100 transition-opacity" />
-            )}
-          </div>
-        </button>
-
-        {/* Rapport Liste de Courses */}
-        <button
-          onClick={() => handleGenerate('shopping')}
-          disabled={generating !== null}
-          className="w-full bg-[var(--cc-surface)] p-5 rounded-2xl shadow-[var(--cc-shadow-sm)] border-2 border-[var(--cc-border)] hover:border-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 active:scale-[0.98] transition-all group text-left relative overflow-hidden flex items-center justify-between disabled:opacity-70"
-        >
-          <div className="absolute top-0 right-0 w-28 h-28 bg-emerald-100 dark:bg-emerald-900 rounded-bl-full opacity-40 group-hover:scale-110 transition-transform -z-0" />
-          <div className="relative z-10 flex items-center gap-4">
-            <div className="bg-emerald-100 dark:bg-emerald-900/50 p-3 rounded-xl">
-              <ShoppingCart className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
-            </div>
-            <div>
-              <h2 className="font-bold text-[var(--cc-text)] text-base">Liste de Courses</h2>
-              <p className="text-sm text-[var(--cc-text-muted)]">Totaux des pièces à réparer et remplacer</p>
-            </div>
-          </div>
-          <div className="relative z-10">
-            {generating === 'shopping' ? (
-              <span className="text-xs text-emerald-600 font-medium animate-pulse">Génération...</span>
-            ) : (
-              <FileOutput className="w-5 h-5 text-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity" />
-            )}
-          </div>
-        </button>
-
-        {/* Rapport Réparations */}
-        <button
-          onClick={() => handleGenerate('repair')}
-          disabled={generating !== null}
-          className="w-full bg-[var(--cc-surface)] p-5 rounded-2xl shadow-[var(--cc-shadow-sm)] border-2 border-[var(--cc-border)] hover:border-amber-400 hover:bg-[var(--cc-warning-light)] active:scale-[0.98] transition-all group text-left relative overflow-hidden flex items-center justify-between disabled:opacity-70"
-        >
-          <div className="absolute top-0 right-0 w-28 h-28 bg-amber-100 dark:bg-amber-950 rounded-bl-full opacity-40 group-hover:scale-110 transition-transform -z-0" />
-          <div className="relative z-10 flex items-center gap-4">
-            <div className="bg-[var(--cc-warning-light)] p-3 rounded-xl">
-              <Wrench className="w-6 h-6 text-[var(--cc-warning)]" />
-            </div>
-            <div>
-              <h2 className="font-bold text-[var(--cc-text)] text-base">Vélos à réparer</h2>
-              <p className="text-sm text-[var(--cc-text-muted)]">{bikesWithRepair} vélo{bikesWithRepair !== 1 ? 's' : ''} concerné{bikesWithRepair !== 1 ? 's' : ''}</p>
-            </div>
-          </div>
-          <div className="relative z-10">
-            {generating === 'repair' ? (
-              <span className="text-xs text-[var(--cc-warning)] font-medium animate-pulse">Génération...</span>
-            ) : (
-              <FileOutput className="w-5 h-5 text-[var(--cc-warning)] opacity-0 group-hover:opacity-100 transition-opacity" />
-            )}
-          </div>
-        </button>
-
-        {/* Rapport Changements */}
-        <button
-          onClick={() => handleGenerate('replace')}
-          disabled={generating !== null}
-          className="w-full bg-[var(--cc-surface)] p-5 rounded-2xl shadow-[var(--cc-shadow-sm)] border-2 border-[var(--cc-border)] hover:border-red-400 hover:bg-[var(--cc-danger-light)] active:scale-[0.98] transition-all group text-left relative overflow-hidden flex items-center justify-between disabled:opacity-70"
-        >
-          <div className="absolute top-0 right-0 w-28 h-28 bg-red-100 dark:bg-red-950 rounded-bl-full opacity-40 group-hover:scale-110 transition-transform -z-0" />
-          <div className="relative z-10 flex items-center gap-4">
-            <div className="bg-[var(--cc-danger-light)] p-3 rounded-xl">
-              <PenTool className="w-6 h-6 text-[var(--cc-danger)]" />
-            </div>
-            <div>
-              <h2 className="font-bold text-[var(--cc-text)] text-base">Pièces à changer</h2>
-              <p className="text-sm text-[var(--cc-text-muted)]">{bikesWithReplace} vélo{bikesWithReplace !== 1 ? 's' : ''} concerné{bikesWithReplace !== 1 ? 's' : ''}</p>
-            </div>
-          </div>
-          <div className="relative z-10">
-            {generating === 'replace' ? (
-              <span className="text-xs text-[var(--cc-danger)] font-medium animate-pulse">Génération...</span>
-            ) : (
-              <FileOutput className="w-5 h-5 text-[var(--cc-danger)] opacity-0 group-hover:opacity-100 transition-opacity" />
-            )}
-          </div>
-        </button>
-
-        {/* Rapport Tableau de Devis */}
-        <button
-          onClick={handleGenerateDevis}
-          disabled={generating !== null}
-          className="w-full bg-[var(--cc-surface)] p-5 rounded-2xl shadow-[var(--cc-shadow-sm)] border-2 border-[var(--cc-border)] hover:border-violet-400 hover:bg-violet-50 dark:hover:bg-violet-950/30 active:scale-[0.98] transition-all group text-left relative overflow-hidden flex items-center justify-between disabled:opacity-70"
-        >
-          <div className="absolute top-0 right-0 w-28 h-28 bg-violet-100 dark:bg-violet-900 rounded-bl-full opacity-40 group-hover:scale-110 transition-transform -z-0" />
-          <div className="relative z-10 flex items-center gap-4">
-            <div className="bg-violet-100 dark:bg-violet-900/50 p-3 rounded-xl">
-              <Receipt className="w-6 h-6 text-violet-600 dark:text-violet-400" />
-            </div>
-            <div>
-              <h2 className="font-bold text-[var(--cc-text)] text-base">Tableau de Devis</h2>
-              <p className="text-sm text-[var(--cc-text-muted)]">Matrice vélos × pièces avec prix à remplir</p>
-            </div>
-          </div>
-          <div className="relative z-10">
-            {generating === 'devis' ? (
-              <span className="text-xs text-violet-600 font-medium animate-pulse">Génération...</span>
-            ) : (
-              <FileOutput className="w-5 h-5 text-violet-600 opacity-0 group-hover:opacity-100 transition-opacity" />
-            )}
-          </div>
-        </button>
-
-        {/* Classement des Coûts (Tous) */}
-        <button
-          onClick={() => handleGenerateCostRanking(false)}
-          disabled={generating !== null}
-          className="w-full bg-[var(--cc-surface)] p-5 rounded-2xl shadow-[var(--cc-shadow-sm)] border-2 border-[var(--cc-border)] hover:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 active:scale-[0.98] transition-all group text-left relative overflow-hidden flex items-center justify-between disabled:opacity-70"
-        >
-          <div className="absolute top-0 right-0 w-28 h-28 bg-blue-100 dark:bg-blue-900 rounded-bl-full opacity-40 group-hover:scale-110 transition-transform -z-0" />
-          <div className="relative z-10 flex items-center gap-4">
-            <div className="bg-blue-100 dark:bg-blue-900/50 p-3 rounded-xl">
-              <ListOrdered className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div>
-              <h2 className="font-bold text-[var(--cc-text)] text-base">Classement des Coûts</h2>
-              <p className="text-sm text-[var(--cc-text-muted)]">Tous les vélos triés du moins cher au plus cher</p>
-            </div>
-          </div>
-          <div className="relative z-10">
-            {generating === 'cost_all' ? (
-              <span className="text-xs text-blue-600 font-medium animate-pulse">Génération...</span>
-            ) : (
-              <FileOutput className="w-5 h-5 text-blue-600 opacity-0 group-hover:opacity-100 transition-opacity" />
-            )}
-          </div>
-        </button>
-
-        {/* Top 20 Moins Coûteux */}
-        <button
-          onClick={() => handleGenerateCostRanking(true)}
-          disabled={generating !== null}
-          className="w-full bg-[var(--cc-surface)] p-5 rounded-2xl shadow-[var(--cc-shadow-sm)] border-2 border-[var(--cc-border)] hover:border-yellow-400 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 active:scale-[0.98] transition-all group text-left relative overflow-hidden flex items-center justify-between disabled:opacity-70"
-        >
-          <div className="absolute top-0 right-0 w-28 h-28 bg-yellow-100 dark:bg-yellow-900/40 rounded-bl-full opacity-40 group-hover:scale-110 transition-transform -z-0" />
-          <div className="relative z-10 flex items-center gap-4">
-            <div className="bg-yellow-100 dark:bg-yellow-900/50 p-3 rounded-xl">
-              <Trophy className="w-6 h-6 text-yellow-600 dark:text-yellow-500" />
-            </div>
-            <div>
-              <h2 className="font-bold text-[var(--cc-text)] text-base">Top 20 Vélos Économiques</h2>
-              <p className="text-sm text-[var(--cc-text-muted)]">Les 20 vélos les moins chers à réparer</p>
-            </div>
-          </div>
-          <div className="relative z-10">
-            {generating === 'cost_top20' ? (
-              <span className="text-xs text-yellow-600 font-medium animate-pulse">Génération...</span>
-            ) : (
-              <FileOutput className="w-5 h-5 text-yellow-600 opacity-0 group-hover:opacity-100 transition-opacity" />
-            )}
-          </div>
-        </button>
+          ))}
+        </div>
       </div>
     </div>
   );

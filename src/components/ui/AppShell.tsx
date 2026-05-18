@@ -2,88 +2,148 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Bike, FileText, Settings } from 'lucide-react';
+import {
+  LayoutDashboard, Package, ArrowLeftRight, History,
+  Users, FileBarChart2, Settings, Layers, Building2,
+  Zap
+} from 'lucide-react';
+import { ThemeToggle } from './ThemeToggle';
 
 const NAV_ITEMS = [
-  { href: '/', icon: Home, label: 'Accueil' },
-  { href: '/bikes', icon: Bike, label: 'Flotte' },
-  { href: '/reports', icon: FileText, label: 'Rapports' },
-  { href: '/settings', icon: Settings, label: 'Réglages' },
+  { href: '/',            icon: LayoutDashboard, label: 'Tableau de bord' },
+  { href: '/categories',  icon: Layers,          label: 'Catégories'      },
+  { href: '/equipment',   icon: Package,         label: 'Équipements'     },
+  { href: '/loans',       icon: ArrowLeftRight,  label: 'Emprunts'        },
+  { href: '/history',     icon: History,         label: 'Historique'      },
+  { href: '/employees',   icon: Users,           label: 'Employés'        },
+  { href: '/departments', icon: Building2,       label: 'Services'        },
+  { href: '/reports',     icon: FileBarChart2,   label: 'Rapports'        },
+  { href: '/settings',    icon: Settings,        label: 'Paramètres'      },
+];
+
+const MOBILE_NAV = [
+  { href: '/',          icon: LayoutDashboard, label: 'Accueil'     },
+  { href: '/equipment', icon: Package,         label: 'Équipements' },
+  { href: '/loans',     icon: ArrowLeftRight,  label: 'Emprunts'    },
+  { href: '/employees', icon: Users,           label: 'Employés'    },
+  { href: '/settings',  icon: Settings,        label: 'Réglages'    },
 ];
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
     return pathname.startsWith(href);
   };
 
   return (
-    <div className="flex min-h-screen bg-[var(--cc-bg)]">
+    <div className="flex min-h-screen" style={{ background: 'var(--et-bg)' }}>
 
-      {/* ── SIDEBAR (Tablette/Desktop : largeur ≥ 768px) ── */}
-      <aside className="hidden md:flex flex-col w-64 bg-[var(--cc-surface)] border-r border-[var(--cc-border)] shadow-[var(--cc-shadow-sm)] shrink-0 sticky top-0 h-screen">
+      {/* ══ SIDEBAR — desktop (md+) ══ */}
+      <aside
+        className="hidden md:flex flex-col w-60 shrink-0 sticky top-0 h-screen"
+        style={{ background: 'var(--et-sidebar-bg)', borderRight: '1px solid var(--et-sidebar-border)' }}
+      >
         {/* Logo */}
-        <div className="px-6 py-5 border-b border-[var(--cc-border)]">
-          <h1 className="text-2xl font-bold text-[var(--cc-primary)]">CycleCheck</h1>
-          <p className="text-xs text-[var(--cc-text-muted)] mt-0.5">Gestion de flotte</p>
+        <div className="flex items-center gap-2.5 px-5 py-5" style={{ borderBottom: '1px solid var(--et-sidebar-border)' }}>
+          <div
+            className="flex items-center justify-center w-8 h-8 rounded-lg shrink-0"
+            style={{ background: 'var(--et-primary)' }}
+          >
+            <Zap className="w-4.5 h-4.5 text-white" strokeWidth={2.5} />
+          </div>
+          <div>
+            <p className="text-sm font-bold tracking-tight" style={{ color: 'var(--et-sidebar-logo)' }}>
+              EquiTrack
+            </p>
+            <p className="text-[10px]" style={{ color: 'var(--et-sidebar-text)' }}>
+              Gestion des équipements
+            </p>
+          </div>
         </div>
 
-        {/* Navigation */}
-        <nav className="flex-1 px-3 py-4 space-y-1">
+        {/* Nav */}
+        <nav className="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
           {NAV_ITEMS.map(({ href, icon: Icon, label }) => {
             const active = isActive(href);
             return (
               <Link
                 key={href}
                 href={href}
-                className={`flex items-center gap-3 px-4 py-3 rounded-xl transition-all font-medium ${
-                  active
-                    ? 'bg-[var(--cc-primary-light)] text-[var(--cc-primary)]'
-                    : 'text-[var(--cc-text-muted)] hover:bg-[var(--cc-border-subtle)] hover:text-[var(--cc-text)]'
-                }`}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all"
+                style={{
+                  background: active ? 'var(--et-sidebar-active-bg)' : 'transparent',
+                  color: active ? 'var(--et-sidebar-active)' : 'var(--et-sidebar-text)',
+                }}
+                onMouseEnter={e => { if (!active) (e.currentTarget as HTMLElement).style.background = 'var(--et-sidebar-hover)'; (e.currentTarget as HTMLElement).style.color = 'var(--et-sidebar-text-hover)'; }}
+                onMouseLeave={e => { if (!active) { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--et-sidebar-text)'; } }}
               >
-                <Icon className={`w-5 h-5 shrink-0 ${active ? 'text-[var(--cc-primary)]' : 'text-[var(--cc-text-faint)]'}`} />
-                {label}
+                <Icon
+                  className="w-4 h-4 shrink-0"
+                  strokeWidth={active ? 2.5 : 2}
+                  style={{ color: active ? 'var(--et-sidebar-active)' : 'var(--et-sidebar-text)' }}
+                />
+                <span className="text-sm" style={{ fontWeight: active ? 600 : 400 }}>
+                  {label}
+                </span>
                 {active && (
-                  <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[var(--cc-primary)]" />
+                  <span
+                    className="ml-auto w-1.5 h-1.5 rounded-full shrink-0"
+                    style={{ background: 'var(--et-sidebar-active)' }}
+                  />
                 )}
               </Link>
             );
           })}
         </nav>
 
-        {/* Footer sidebar : version */}
-        <div className="px-5 py-4 border-t border-[var(--cc-border)] flex items-center justify-center">
-          <span className="text-xs text-[var(--cc-text-faint)]">CycleCheck v1.0</span>
+        {/* Bottom */}
+        <div
+          className="px-4 py-4 flex items-center justify-between"
+          style={{ borderTop: '1px solid var(--et-sidebar-border)' }}
+        >
+          <span className="text-[11px]" style={{ color: 'var(--et-sidebar-text)' }}>
+            v1.0.0
+          </span>
+          <ThemeToggle />
         </div>
       </aside>
 
-      {/* ── CONTENU PRINCIPAL ── */}
-      <main className="flex-1 flex flex-col overflow-auto">
+      {/* ══ MAIN ══ */}
+      <main className="flex-1 flex flex-col overflow-auto min-w-0">
         <div className="flex-1 pb-20 md:pb-0">
           {children}
         </div>
       </main>
 
-      {/* ── BOTTOM NAV (Mobile uniquement : largeur < 768px) ── */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-[var(--cc-surface)] border-t border-[var(--cc-border)] shadow-[0_-2px_12px_rgba(0,0,0,0.08)] z-50">
+      {/* ══ BOTTOM NAV — mobile ══ */}
+      <nav
+        className="md:hidden fixed bottom-0 left-0 right-0 z-50"
+        style={{
+          background: 'var(--et-surface)',
+          borderTop: '1px solid var(--et-border)',
+          boxShadow: '0 -4px 20px rgba(0,0,0,0.08)',
+        }}
+      >
         <div className="flex items-stretch h-16">
-          {NAV_ITEMS.map(({ href, icon: Icon, label }) => {
+          {MOBILE_NAV.map(({ href, icon: Icon, label }) => {
             const active = isActive(href);
             return (
               <Link
                 key={href}
                 href={href}
-                className={`flex-1 flex flex-col items-center justify-center gap-0.5 transition-colors relative ${
-                  active ? 'text-[var(--cc-primary)]' : 'text-[var(--cc-text-faint)] hover:text-[var(--cc-text-muted)]'
-                }`}
+                className="flex-1 flex flex-col items-center justify-center gap-1 transition-colors relative"
+                style={{ color: active ? 'var(--et-primary)' : 'var(--et-text-muted)' }}
               >
-                <Icon className={`w-5 h-5 transition-transform ${active ? 'scale-110' : ''}`} />
-                <span className="text-[10px] font-medium">{label}</span>
                 {active && (
-                  <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-[var(--cc-primary)] rounded-full" />
+                  <span
+                    className="absolute top-0 left-1/2 -translate-x-1/2 w-10 h-0.5 rounded-full"
+                    style={{ background: 'var(--et-primary)' }}
+                  />
                 )}
+                <Icon className={`w-5 h-5 transition-transform ${active ? 'scale-110' : ''}`} strokeWidth={active ? 2.5 : 2} />
+                <span className="text-[10px] font-medium">{label}</span>
               </Link>
             );
           })}

@@ -10,13 +10,12 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "CycleCheck – Gestion de flotte",
-  description: "Application de diagnostic et suivi de flotte de vélos",
-  manifest: "/manifest.json",
+  title: "EquiTrack – Gestion des équipements",
+  description: "Plateforme de suivi et gestion des équipements d'entreprise",
 };
 
 export const viewport: Viewport = {
-  themeColor: "#4f46e5",
+  themeColor: "#3b82f6",
   width: "device-width",
   initialScale: 1,
 };

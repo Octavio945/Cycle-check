@@ -1,165 +1,245 @@
 'use client';
 
-import Link from 'next/link';
-import { Bike, Settings, FileText, Activity, TrendingDown } from 'lucide-react';
-import { useStore } from '@/store/useStore';
 import { useEffect, useState } from 'react';
-import ThemeToggle from '@/components/ui/ThemeToggle';
+import Link from 'next/link';
+import {
+  Package, ArrowLeftRight, CheckCircle2, AlertCircle,
+  Wrench, Plus, Clock, ArrowRight, Layers, Users
+} from 'lucide-react';
+import { getDashboardStats, getLoans, getCategories } from '@/lib/supabase';
+import type { DashboardStats, Loan, Category } from '@/types';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 
-export default function Home() {
-  const bikes = useStore((state) => state.bikes);
-  const [mounted, setMounted] = useState(false);
+export default function DashboardPage() {
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [recentLoans, setRecentLoans] = useState<Loan[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [catStats, setCatStats] = useState<Record<string, { total: number; available: number; borrowed: number; broken: number }>>({});
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [s, loans, cats] = await Promise.all([
+          getDashboardStats(),
+          getLoans('active'),
+          getCategories(),
+        ]);
+        setStats(s);
+        setRecentLoans(loans.slice(0, 5));
+        setCategories(cats);
 
-  const totalBikes    = bikes.length;
-  const bikesToRepair  = bikes.filter(b => b.parts.some(p => p.status === 'repair')).length;
-  const bikesToReplace = bikes.filter(b => b.parts.some(p => p.status === 'replace')).length;
+        const { supabase } = await import('@/lib/supabase');
+        const { data } = await supabase.from('equipment').select('category_id, status');
+        if (data) {
+          const m: Record<string, { total: number; available: number; borrowed: number; broken: number }> = {};
+          for (const row of data) {
+            if (!m[row.category_id]) m[row.category_id] = { total: 0, available: 0, borrowed: 0, broken: 0 };
+            m[row.category_id].total++;
+            if (row.status === 'available') m[row.category_id].available++;
+            if (row.status === 'borrowed') m[row.category_id].borrowed++;
+            if (row.status === 'broken') m[row.category_id].broken++;
+          }
+          setCatStats(m);
+        }
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, []);
 
-  const stats = [
-    { label: 'Total', value: totalBikes,    bg: 'bg-[var(--cc-primary-light)]',  text: 'text-[var(--cc-primary)]',          border: 'border-indigo-200 dark:border-indigo-900' },
-    { label: 'À réparer', value: bikesToRepair, bg: 'bg-[var(--cc-warning-light)]', text: 'text-[var(--cc-warning)]',  border: 'border-amber-200 dark:border-amber-900' },
-    { label: 'À changer', value: bikesToReplace,bg: 'bg-[var(--cc-danger-light)]', text: 'text-[var(--cc-danger)]', border: 'border-red-200 dark:border-red-900' },
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center" style={{ minHeight: '60vh' }}>
+        <div className="flex flex-col items-center gap-3">
+          <div className="spinner" style={{ width: '2rem', height: '2rem' }} />
+          <p style={{ color: 'var(--et-text-muted)', fontSize: '0.875rem' }}>Chargement…</p>
+        </div>
+      </div>
+    );
+  }
+
+  const STAT_CARDS = [
+    { label: 'Total équipements', value: stats?.total ?? 0,        icon: Package,       color: '#3b82f6', bg: 'rgba(59,130,246,0.1)',  href: '/equipment'                 },
+    { label: 'Disponibles',       value: stats?.available ?? 0,    icon: CheckCircle2,  color: '#10b981', bg: 'rgba(16,185,129,0.1)',  href: '/equipment?status=available'},
+    { label: 'Empruntés',         value: stats?.borrowed ?? 0,     icon: ArrowLeftRight,color: '#8b5cf6', bg: 'rgba(139,92,246,0.1)', href: '/loans'                     },
+    { label: 'En panne',          value: stats?.broken ?? 0,       icon: AlertCircle,   color: '#ef4444', bg: 'rgba(239,68,68,0.1)',   href: '/equipment?status=broken'   },
+    { label: 'Maintenance',       value: stats?.maintenance ?? 0,  icon: Wrench,        color: '#f59e0b', bg: 'rgba(245,158,11,0.1)', href: '/equipment?status=maintenance'},
+    { label: 'Emprunts actifs',   value: stats?.active_loans ?? 0, icon: Clock,         color: '#06b6d4', bg: 'rgba(6,182,212,0.1)',  href: '/loans'                     },
   ];
 
-  // --- NOUVELLES STATISTIQUES ---
-  // Calcul du taux de santé (vélos 100% bons / total)
-  const bikesInGoodCondition = bikes.filter(b => b.parts.every(p => p.status === 'good')).length;
-  const healthRate = totalBikes > 0 ? Math.round((bikesInGoodCondition / totalBikes) * 100) : 100;
-
-  // Calcul du Top 3 des pannes
-  const partFailures: Record<string, number> = {};
-  bikes.forEach(bike => {
-    bike.parts.forEach(p => {
-      if (p.status === 'repair' || p.status === 'replace') {
-        partFailures[p.name] = (partFailures[p.name] || 0) + 1;
-      }
-    });
-  });
-  const topFailures = Object.entries(partFailures)
-    .sort((a, b) => b[1] - a[1]) // Tri décroissant
-    .slice(0, 3); // Garder le top 3
-
   return (
-    <div className="min-h-screen bg-[var(--cc-bg)]">
-      {/* Header mobile */}
-      <header className="flex justify-between items-center px-4 py-5 md:hidden">
+    <div className="fade-in">
+      {/* Header */}
+      <div className="page-header flex items-start justify-between flex-wrap gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--cc-primary)]">CycleCheck</h1>
-          <p className="text-xs text-[var(--cc-text-muted)]">Gestion de flotte de vélos</p>
+          <h1 className="page-title">Tableau de bord</h1>
+          <p className="page-subtitle">
+            {format(new Date(), "EEEE d MMMM yyyy", { locale: fr })}
+          </p>
         </div>
-        <div className="flex items-center gap-2">
-          <ThemeToggle />
-          <Link href="/settings" className="p-2 bg-[var(--cc-surface)] rounded-full shadow-sm hover:opacity-80 transition-opacity">
-            <Settings className="w-5 h-5 text-[var(--cc-text-muted)]" />
+        <div className="flex gap-2 flex-wrap">
+          <Link href="/loans/new" className="btn btn-primary">
+            <ArrowLeftRight className="w-4 h-4" /> Nouvel emprunt
+          </Link>
+          <Link href="/equipment/new" className="btn btn-secondary">
+            <Plus className="w-4 h-4" /> Équipement
           </Link>
         </div>
-      </header>
+      </div>
 
-      <div className="px-4 pb-8 sm:px-6 lg:px-10 max-w-5xl mx-auto">
-        <div className="hidden md:flex justify-between items-center mt-6 mb-6">
-          <h2 className="text-2xl font-bold text-[var(--cc-text)]">Tableau de bord</h2>
-          <ThemeToggle />
+      <div className="px-4 md:px-7 space-y-5 pb-8">
+
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+          {STAT_CARDS.map(({ label, value, icon: Icon, color, bg, href }) => (
+            <Link key={label} href={href} className="stat-card">
+              <div className="flex items-center justify-center w-10 h-10 rounded-xl shrink-0" style={{ background: bg }}>
+                <Icon className="w-5 h-5" style={{ color }} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-2xl font-bold leading-none" style={{ color: 'var(--et-text)' }}>{value}</p>
+                <p className="text-xs mt-1 truncate" style={{ color: 'var(--et-text-muted)' }}>{label}</p>
+              </div>
+            </Link>
+          ))}
         </div>
 
-        {/* Statistiques */}
-        <section className="bg-[var(--cc-surface)] rounded-2xl p-5 shadow-[var(--cc-shadow-sm)] border border-[var(--cc-border)] mb-6">
-          <h2 className="text-base font-semibold text-[var(--cc-text-muted)] mb-4">Aperçu de la flotte</h2>
-          <div className="grid grid-cols-3 gap-3 text-center">
-            {stats.map(({ label, value, bg, text, border }) => (
-              <div key={label} className={`${bg} ${border} py-4 rounded-xl border flex flex-col items-center justify-center`}>
-                <span className={`text-3xl font-bold ${text}`}>{mounted ? value : '–'}</span>
-                <span className={`text-xs font-medium mt-1 ${text} opacity-80`}>{label}</span>
+        <div className="grid md:grid-cols-2 gap-5">
+
+          {/* Par catégorie */}
+          <div className="card p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Layers className="w-4 h-4" style={{ color: 'var(--et-text-muted)' }} />
+                <h2 className="font-semibold text-sm" style={{ color: 'var(--et-text)' }}>Disponibilité par catégorie</h2>
               </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Intelligence Métier (Taux de santé & Top pannes) */}
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          
-          {/* Taux de Santé */}
-          <div className="bg-[var(--cc-surface)] rounded-2xl p-5 shadow-[var(--cc-shadow-sm)] border border-[var(--cc-border)] flex items-center justify-between">
-            <div>
-              <h3 className="text-sm font-semibold text-[var(--cc-text-muted)] flex items-center gap-2 mb-1">
-                <Activity className="w-4 h-4 text-emerald-500" /> Taux de Santé
-              </h3>
-              <p className="text-3xl font-bold text-[var(--cc-text)]">
-                {mounted ? `${healthRate}%` : '–'}
-              </p>
-              <p className="text-xs text-[var(--cc-text-faint)] mt-1">
-                {mounted ? `${bikesInGoodCondition} vélos en parfait état` : 'Calcul...'}
-              </p>
+              <Link href="/categories" className="text-xs font-medium flex items-center gap-1" style={{ color: 'var(--et-primary)' }}>
+                Voir tout <ArrowRight className="w-3 h-3" />
+              </Link>
             </div>
-            {/* Cercle de progression visuel */}
-            <div className="relative w-16 h-16 rounded-full flex items-center justify-center border-4" 
-                 style={{ borderColor: healthRate > 75 ? '#10b981' : healthRate > 50 ? '#f59e0b' : '#ef4444' }}>
-              <span className="text-base font-bold" style={{ color: healthRate > 75 ? '#10b981' : healthRate > 50 ? '#f59e0b' : '#ef4444' }}>
-                {mounted ? `${healthRate}%` : ''}
-              </span>
-            </div>
-          </div>
-
-          {/* Palmarès des Pannes */}
-          <div className="bg-[var(--cc-surface)] rounded-2xl p-5 shadow-[var(--cc-shadow-sm)] border border-[var(--cc-border)] flex flex-col justify-center">
-            <h3 className="text-sm font-semibold text-[var(--cc-text-muted)] flex items-center gap-2 mb-3">
-              <TrendingDown className="w-4 h-4 text-rose-500" /> Pièces les plus fragiles
-            </h3>
-            {mounted && topFailures.length > 0 ? (
-              <div className="space-y-2">
-                {topFailures.map(([name, count], index) => (
-                  <div key={name} className="flex justify-between items-center text-sm">
-                    <span className="flex items-center gap-2">
-                      <span className="text-[10px] bg-[var(--cc-border-subtle)] text-[var(--cc-text-muted)] px-1.5 py-0.5 rounded font-bold">{index + 1}</span>
-                      <span className="font-medium text-[var(--cc-text)] truncate max-w-[120px]">{name}</span>
-                    </span>
-                    <span className="text-[var(--cc-danger)] font-semibold">{count} panne{count > 1 ? 's' : ''}</span>
-                  </div>
-                ))}
+            {categories.length === 0 ? (
+              <div className="empty-state py-6">
+                <Layers className="empty-state-icon" />
+                <p className="empty-state-title">Aucune catégorie</p>
+                <Link href="/categories/new" className="btn btn-primary btn-sm mt-2">
+                  <Plus className="w-3.5 h-3.5" /> Créer une catégorie
+                </Link>
               </div>
             ) : (
-              <p className="text-sm text-[var(--cc-text-faint)] italic py-2">
-                {mounted ? 'Aucune panne recensée pour le moment.' : 'Chargement...'}
-              </p>
+              <div className="space-y-3">
+                {categories.map(cat => {
+                  const cs = catStats[cat.id] ?? { total: 0, available: 0, borrowed: 0, broken: 0 };
+                  const pct = cs.total > 0 ? Math.round((cs.available / cs.total) * 100) : 0;
+                  return (
+                    <Link key={cat.id} href={`/categories/${cat.id}`} className="block">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">{cat.icon}</span>
+                          <span className="text-sm font-medium" style={{ color: 'var(--et-text)' }}>{cat.name}</span>
+                          <span className="eq-number">{cat.code}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--et-text-muted)' }}>
+                          <span style={{ color: 'var(--et-success)', fontWeight: 600 }}>{cs.available} dispo</span>
+                          <span>/ {cs.total}</span>
+                        </div>
+                      </div>
+                      <div className="progress-bar">
+                        <div
+                          className="progress-fill"
+                          style={{
+                            width: `${pct}%`,
+                            background: pct > 60 ? 'var(--et-success)' : pct > 30 ? 'var(--et-warning)' : 'var(--et-danger)',
+                          }}
+                        />
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
             )}
           </div>
 
-        </section>
-
-        {/* Actions */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Link
-            href="/bikes"
-            className="bg-[var(--cc-primary)] text-white p-5 rounded-2xl flex items-center justify-between shadow-[var(--cc-shadow)] hover:opacity-90 active:scale-[0.98] transition-all group"
-          >
-            <div className="flex items-center gap-4">
-              <div className="bg-white/20 p-2.5 rounded-xl border border-white/30">
-                <Bike className="w-6 h-6 text-white" />
+          {/* Emprunts actifs */}
+          <div className="card p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4" style={{ color: 'var(--et-text-muted)' }} />
+                <h2 className="font-semibold text-sm" style={{ color: 'var(--et-text)' }}>Emprunts en cours</h2>
               </div>
-              <div>
-                <span className="block font-semibold text-lg leading-tight">Gérer les vélos</span>
-                <span className="text-sm text-white/70">Ajouter, voir ou modifier</span>
-              </div>
+              <Link href="/loans" className="text-xs font-medium flex items-center gap-1" style={{ color: 'var(--et-primary)' }}>
+                Voir tout <ArrowRight className="w-3 h-3" />
+              </Link>
             </div>
-            <span className="text-xl group-hover:translate-x-1 transition-transform">→</span>
-          </Link>
+            {recentLoans.length === 0 ? (
+              <div className="empty-state py-6">
+                <ArrowLeftRight className="empty-state-icon" />
+                <p className="empty-state-title">Aucun emprunt actif</p>
+                <Link href="/loans/new" className="btn btn-primary btn-sm mt-2">
+                  <Plus className="w-3.5 h-3.5" /> Créer un emprunt
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {recentLoans.map(loan => {
+                  const count = loan.items?.length ?? 0;
+                  const cats = [...new Set(loan.items?.map(i => i.equipment?.category?.name).filter(Boolean))];
+                  return (
+                    <Link key={loan.id} href={`/loans/${loan.id}`}
+                      className="flex items-center gap-3 p-3 rounded-xl"
+                      style={{ background: 'var(--et-surface-2)' }}
+                    >
+                      <div className="flex items-center justify-center w-9 h-9 rounded-full shrink-0 text-sm font-bold text-white"
+                        style={{ background: 'var(--et-primary)' }}>
+                        {loan.employee?.name?.charAt(0).toUpperCase() ?? '?'}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold truncate" style={{ color: 'var(--et-text)' }}>
+                          {loan.employee?.name ?? '—'}
+                        </p>
+                        <p className="text-xs truncate" style={{ color: 'var(--et-text-muted)' }}>
+                          {count} item{count > 1 ? 's' : ''} · {cats.join(', ') || '—'}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-xs mb-1" style={{ color: 'var(--et-text-muted)' }}>
+                          {format(new Date(loan.checkout_date), 'dd/MM', { locale: fr })}
+                        </p>
+                        <span className="badge badge-active">actif</span>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
 
-          <Link
-            href="/reports"
-            className="bg-[var(--cc-surface)] text-[var(--cc-text)] p-5 rounded-2xl flex items-center justify-between shadow-[var(--cc-shadow-sm)] border border-[var(--cc-border)] hover:border-[var(--cc-primary)] active:scale-[0.98] transition-all group"
-          >
-            <div className="flex items-center gap-4">
-              <div className="bg-[var(--cc-border-subtle)] p-2.5 rounded-xl border border-[var(--cc-border)] group-hover:bg-[var(--cc-primary-light)] group-hover:border-indigo-200 transition-colors">
-                <FileText className="w-6 h-6 text-[var(--cc-text-muted)] group-hover:text-[var(--cc-primary)] transition-colors" />
-              </div>
-              <div>
-                <span className="block font-semibold text-lg leading-tight">Générer les rapports</span>
-                <span className="text-sm text-[var(--cc-text-muted)]">Exporter en PDF</span>
-              </div>
-            </div>
-            <span className="text-xl text-[var(--cc-text-faint)] group-hover:translate-x-1 group-hover:text-[var(--cc-primary)] transition-all">→</span>
-          </Link>
-        </section>
+        {/* Quick actions */}
+        <div className="card p-5">
+          <p className="section-label">Actions rapides</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { href: '/loans/new',      icon: ArrowLeftRight, label: 'Nouvel emprunt',     color: '#3b82f6', bg: 'rgba(59,130,246,0.08)'  },
+              { href: '/equipment/new',  icon: Package,        label: 'Ajouter équipement', color: '#10b981', bg: 'rgba(16,185,129,0.08)'  },
+              { href: '/employees/new',  icon: Users,          label: 'Ajouter employé',    color: '#8b5cf6', bg: 'rgba(139,92,246,0.08)'  },
+              { href: '/categories/new', icon: Layers,         label: 'Créer catégorie',    color: '#f59e0b', bg: 'rgba(245,158,11,0.08)'  },
+            ].map(({ href, icon: Icon, label, color, bg }) => (
+              <Link key={href} href={href}
+                className="flex flex-col items-center gap-2.5 p-4 rounded-xl transition-all text-center"
+                style={{ background: bg, border: `1px solid ${color}25` }}
+              >
+                <Icon className="w-5 h-5" style={{ color }} />
+                <span className="text-xs font-semibold" style={{ color: 'var(--et-text-secondary)' }}>{label}</span>
+              </Link>
+            ))}
+          </div>
+        </div>
+
       </div>
     </div>
   );

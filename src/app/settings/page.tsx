@@ -1,272 +1,272 @@
 'use client';
 
-import Link from 'next/link';
-import { ArrowLeft, List, Info, Moon, Download, Upload, AlertCircle, Trash2 } from 'lucide-react';
-import ConfirmModal from '@/components/ui/ConfirmModal';
-import { useTheme } from '@/components/ui/ThemeProvider';
-import ThemeToggle from '@/components/ui/ThemeToggle';
-import { useStore } from '@/store/useStore';
-import { useState, useRef } from 'react';
-import { cleanDuplicateData } from '@/lib/dataMigration';
+import { useState, useEffect } from 'react';
+import { Info, Database, Download, Upload, CheckCircle2, XCircle, Loader } from 'lucide-react';
+import { supabase, getCategories, getDepartments, getEmployees, getEquipment, getLoans } from '@/lib/supabase';
+
+const APP_VERSION = '1.0.0';
+
+type DbStatus = 'idle' | 'checking' | 'ok' | 'error';
 
 export default function SettingsPage() {
-  const { theme, toggleTheme } = useTheme();
-  const store = useStore();
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [importStatus, setImportStatus] = useState<'idle' | 'success' | 'error'>('idle');
-  const [cleanStatus, setCleanStatus] = useState<'idle' | 'cleaning' | 'success' | 'error' | 'none'>('idle');
-  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [dbStatus, setDbStatus] = useState<DbStatus>('idle');
+  const [dbError, setDbError] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState('');
+  const [supabaseUrl, setSupabaseUrl] = useState('');
 
-  // --- EXPORT ---
-  const handleExport = () => {
-    // Récupération de l'état complet
-    const data = {
-      baseParts: store.baseParts,
-      bikes: store.bikes,
-    };
-    
-    // Création du fichier JSON
-    const dataStr = JSON.stringify(data, null, 2);
-    const blob = new Blob([dataStr], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    
-    // Téléchargement
-    const link = document.createElement('a');
-    const dateStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-    link.download = `CycleCheck_Backup_${dateStr}.json`;
-    link.href = url;
-    link.click();
-    
-    // Cleanup
-    URL.revokeObjectURL(url);
-  };
+  useEffect(() => {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+    setSupabaseUrl(url);
+  }, []);
 
-  // --- IMPORT ---
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const json = JSON.parse(event.target?.result as string);
-        if (json.baseParts && json.bikes) {
-          store.importData(json);
-          setImportStatus('success');
-          setTimeout(() => setImportStatus('idle'), 3000); // Reset UI
-        } else {
-          setImportStatus('error');
-        }
-      } catch (err) {
-        console.error("Erreur de parsing:", err);
-        setImportStatus('error');
-      }
-    };
-    reader.readAsText(file);
-    // Reset l'input pour pouvoir ré-importer le même fichier si besoin
-    if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  // --- Nettoyage des Données ---
-  const handleCleanData = () => {
-    setCleanStatus('cleaning');
+  const maskUrl = (url: string) => {
+    if (!url) return '(non configurée)';
     try {
-      const result = cleanDuplicateData(store);
-      if (result.modified) {
-        store.importData({
-          baseParts: result.newBaseParts,
-          bikes: result.newBikes
-        });
-      }
-      setCleanStatus('success');
-      setTimeout(() => setCleanStatus('idle'), 3000);
-    } catch (err) {
-      console.error("Erreur lors du nettoyage:", err);
-      setCleanStatus('error' as const);
-      setTimeout(() => setCleanStatus('idle'), 3000);
+      const u = new URL(url);
+      return `${u.protocol}//***.${u.hostname.split('.').slice(-2).join('.')}`;
+    } catch {
+      return url.slice(0, 20) + '***';
     }
   };
 
-  return (
-    <div className="min-h-screen bg-[var(--cc-bg)]">
-      <ConfirmModal
-        open={showResetConfirm}
-        title="Effacer toutes les données ?"
-        message="⚠️ Cette action est irréversible. Tous les vélos enregistrés seront supprimés et la liste des pièces sera réinitialisée aux valeurs par défaut. Assurez-vous d'avoir exporté une sauvegarde avant de continuer."
-        confirmLabel="Tout effacer"
-        onConfirm={() => { store.resetStore(); setShowResetConfirm(false); }}
-        onCancel={() => setShowResetConfirm(false)}
-      />
-      <header className="flex items-center justify-between gap-4 px-4 py-4 bg-[var(--cc-surface)] border-b border-[var(--cc-border)] sticky top-0 z-10 sm:px-6">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="p-2 -ml-2 hover:bg-[var(--cc-border-subtle)] rounded-full transition-colors md:hidden">
-            <ArrowLeft className="w-5 h-5 text-[var(--cc-text-muted)]" />
-          </Link>
-          <h1 className="text-xl font-semibold text-[var(--cc-text)]">Paramètres</h1>
+  const testConnection = async () => {
+    setDbStatus('checking');
+    setDbError('');
+    try {
+      const { error } = await supabase.from('categories').select('id').limit(1);
+      if (error) throw error;
+      setDbStatus('ok');
+    } catch (e: unknown) {
+      setDbStatus('error');
+      setDbError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const [categories, departments, employees, equipment, loans] = await Promise.all([
+        getCategories(),
+        getDepartments(),
+        getEmployees(),
+        getEquipment(),
+        getLoans(),
+      ]);
+      const backup = {
+        version: APP_VERSION,
+        exported_at: new Date().toISOString(),
+        data: { categories, departments, employees, equipment, loans },
+      };
+      const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `equitrack-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: unknown) {
+      alert('Erreur export : ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportResult('');
+    try {
+      const text = await file.text();
+      const backup = JSON.parse(text);
+      if (!backup.data) throw new Error('Format de fichier invalide');
+      const { categories, departments, employees, equipment } = backup.data;
+      let count = 0;
+
+      if (Array.isArray(categories)) {
+        for (const cat of categories) {
+          await supabase.from('categories').upsert(cat, { onConflict: 'id' });
+          count++;
+        }
+      }
+      if (Array.isArray(departments)) {
+        for (const dept of departments) {
+          await supabase.from('departments').upsert(dept, { onConflict: 'id' });
+          count++;
+        }
+      }
+      if (Array.isArray(employees)) {
+        for (const emp of employees) {
+          const { department, ...rest } = emp;
+          void department;
+          await supabase.from('employees').upsert(rest, { onConflict: 'id' });
+          count++;
+        }
+      }
+      if (Array.isArray(equipment)) {
+        for (const eq of equipment) {
+          const { category, ...rest } = eq;
+          void category;
+          await supabase.from('equipment').upsert(rest, { onConflict: 'id' });
+          count++;
+        }
+      }
+      setImportResult(`Import réussi : ${count} enregistrements restaurés.`);
+    } catch (err: unknown) {
+      setImportResult('Erreur import : ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setImporting(false);
+      e.target.value = '';
+    }
+  };
+
+  const SECTIONS = [
+    {
+      key: 'general',
+      icon: Info,
+      title: 'Général',
+      color: '#3b82f6',
+      content: (
+        <div className="space-y-4">
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="p-4 rounded-xl" style={{ background: 'var(--et-surface-2)' }}>
+              <p className="text-xs" style={{ color: 'var(--et-text-muted)' }}>Application</p>
+              <p className="font-semibold mt-1" style={{ color: 'var(--et-text)' }}>EquiTrack</p>
+              <p className="text-sm" style={{ color: 'var(--et-text-muted)' }}>Gestion des emprunts d'équipements</p>
+            </div>
+            <div className="p-4 rounded-xl" style={{ background: 'var(--et-surface-2)' }}>
+              <p className="text-xs" style={{ color: 'var(--et-text-muted)' }}>Version</p>
+              <p className="font-semibold mt-1 font-mono" style={{ color: 'var(--et-text)' }}>v{APP_VERSION}</p>
+              <p className="text-sm" style={{ color: 'var(--et-text-muted)' }}>Next.js 16 + Supabase</p>
+            </div>
+          </div>
+          <div className="p-4 rounded-xl" style={{ background: 'var(--et-surface-2)' }}>
+            <p className="text-xs mb-2" style={{ color: 'var(--et-text-muted)' }}>Stack technique</p>
+            <div className="flex flex-wrap gap-2">
+              {['Next.js 16', 'React 19', 'Supabase', 'TypeScript', 'Tailwind CSS v4', 'jsPDF', 'date-fns'].map(t => (
+                <span key={t} className="badge badge-neutral">{t}</span>
+              ))}
+            </div>
+          </div>
         </div>
-        <ThemeToggle />
-      </header>
-
-      <div className="max-w-2xl mx-auto px-4 py-6 sm:px-6 space-y-6">
-
-        {/* Application */}
-        <section>
-          <h2 className="text-xs font-semibold text-[var(--cc-text-faint)] uppercase tracking-wider mb-2 ml-1">Application</h2>
-          <div className="bg-[var(--cc-surface)] rounded-2xl overflow-hidden shadow-[var(--cc-shadow-sm)] border border-[var(--cc-border)]">
-            <Link
-              href="/settings/parts"
-              className="flex items-center gap-4 p-4 hover:bg-[var(--cc-border-subtle)] transition-colors"
-            >
-              <div className="bg-[var(--cc-primary-light)] p-2 rounded-lg">
-                <List className="w-5 h-5 text-[var(--cc-primary)]" />
-              </div>
-              <div className="flex-1">
-                <span className="block font-medium text-[var(--cc-text)]">Variables &amp; Pièces</span>
-                <span className="block text-sm text-[var(--cc-text-muted)]">Gérer la liste commune des pièces</span>
-              </div>
-              <span className="text-[var(--cc-text-faint)] text-lg">→</span>
-            </Link>
+      ),
+    },
+    {
+      key: 'database',
+      icon: Database,
+      title: 'Base de données',
+      color: '#10b981',
+      content: (
+        <div className="space-y-4">
+          <div className="p-4 rounded-xl" style={{ background: 'var(--et-surface-2)' }}>
+            <p className="text-xs mb-1" style={{ color: 'var(--et-text-muted)' }}>URL Supabase (masquée)</p>
+            <p className="font-mono text-sm" style={{ color: 'var(--et-text)' }}>{maskUrl(supabaseUrl)}</p>
           </div>
-        </section>
-
-        {/* Apparence */}
-        <section>
-          <h2 className="text-xs font-semibold text-[var(--cc-text-faint)] uppercase tracking-wider mb-2 ml-1">Apparence</h2>
-          <div className="bg-[var(--cc-surface)] rounded-2xl overflow-hidden shadow-[var(--cc-shadow-sm)] border border-[var(--cc-border)]">
+          <div className="flex items-center gap-3">
             <button
-              onClick={toggleTheme}
-              className="w-full flex items-center gap-4 p-4 hover:bg-[var(--cc-border-subtle)] transition-colors text-left"
+              onClick={testConnection}
+              disabled={dbStatus === 'checking'}
+              className="btn btn-secondary btn-sm"
             >
-              <div className="bg-[var(--cc-border-subtle)] p-2 rounded-lg">
-                <Moon className="w-5 h-5 text-[var(--cc-text-muted)]" />
-              </div>
-              <div className="flex-1">
-                <span className="block font-medium text-[var(--cc-text)]">Mode d&apos;affichage</span>
-                <span className="block text-sm text-[var(--cc-text-muted)]">
-                  Actuellement : <strong>{theme === 'dark' ? 'Sombre' : 'Clair'}</strong>
-                </span>
-              </div>
-              <div className={`relative w-11 h-6 rounded-full transition-colors ${theme === 'dark' ? 'bg-[var(--cc-primary)]' : 'bg-[var(--cc-border)]'}`}>
-                <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${theme === 'dark' ? 'translate-x-5' : 'translate-x-0'}`} />
-              </div>
+              {dbStatus === 'checking' ? (
+                <div className="spinner" style={{ width: '0.875rem', height: '0.875rem' }} />
+              ) : (
+                <Database className="w-3.5 h-3.5" />
+              )}
+              {dbStatus === 'checking' ? 'Test en cours…' : 'Tester la connexion'}
             </button>
+            {dbStatus === 'ok' && (
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4" style={{ color: 'var(--et-success)' }} />
+                <span className="text-sm" style={{ color: 'var(--et-success-text)' }}>Connexion réussie</span>
+              </div>
+            )}
+            {dbStatus === 'error' && (
+              <div className="flex items-center gap-1.5">
+                <XCircle className="w-4 h-4" style={{ color: 'var(--et-danger)' }} />
+                <span className="text-sm" style={{ color: 'var(--et-danger-text)' }}>Erreur : {dbError}</span>
+              </div>
+            )}
           </div>
-        </section>
-
-        {/* Données & Sauvegarde */}
-        <section>
-          <h2 className="text-xs font-semibold text-[var(--cc-text-faint)] uppercase tracking-wider mb-2 ml-1 flex items-center gap-2">
-            Sécurité &amp; Données <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
-          </h2>
-          <div className="bg-[var(--cc-surface)] rounded-2xl overflow-hidden shadow-[var(--cc-shadow-sm)] border border-[var(--cc-border)] divide-y divide-[var(--cc-border)]">
-            
-            {/* Exporter */}
-            <button
-              onClick={handleExport}
-              className="w-full flex items-center gap-4 p-4 hover:bg-[var(--cc-border-subtle)] transition-colors text-left"
-            >
-              <div className="bg-[var(--cc-primary-light)] p-2 rounded-lg">
-                <Download className="w-5 h-5 text-[var(--cc-primary)]" />
-              </div>
-              <div className="flex-1">
-                <span className="block font-medium text-[var(--cc-text)]">Exporter et Sauvegarder</span>
-                <span className="block text-xs text-[var(--cc-text-muted)] mt-0.5">
-                  Télécharger vos données sur cet appareil (.json)
-                </span>
-              </div>
-            </button>
-
-            {/* Nettoyer doublons */}
-            <button
-              onClick={handleCleanData}
-              disabled={cleanStatus === 'cleaning'}
-              className="w-full flex items-center gap-4 p-4 hover:bg-[var(--cc-border-subtle)] transition-colors text-left"
-            >
-              <div className="bg-violet-100 dark:bg-violet-900/40 p-2 rounded-lg">
-                <List className="w-5 h-5 text-violet-600 dark:text-violet-500" />
-              </div>
-              <div className="flex-1">
-                <span className="block font-medium text-[var(--cc-text)]">Nettoyer les données</span>
-                <span className="block text-xs text-[var(--cc-text-muted)] mt-0.5">
-                  {cleanStatus === 'success' ? (
-                    <span className="text-green-600 dark:text-green-500 font-medium">✅ Pièces fusionnées !</span>
-                  ) : cleanStatus === 'cleaning' ? (
-                    <span className="text-violet-600 font-medium">Nettoyage en cours...</span>
-                  ) : (
-                    "Corrige et fusionne les noms de pièces en vrac"
-                  )}
-                </span>
-              </div>
-            </button>
-
-            {/* Importer */}
+        </div>
+      ),
+    },
+    {
+      key: 'data',
+      icon: Download,
+      title: 'Données',
+      color: '#8b5cf6',
+      content: (
+        <div className="space-y-4">
+          <div className="p-4 rounded-xl space-y-3" style={{ background: 'var(--et-surface-2)' }}>
             <div>
-              <input 
-                type="file" 
-                accept=".json" 
-                className="hidden" 
-                ref={fileInputRef} 
-                onChange={handleImport}
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="w-full flex items-center gap-4 p-4 hover:bg-[var(--cc-border-subtle)] transition-colors text-left"
-              >
-                <div className="bg-amber-100 dark:bg-amber-900/40 p-2 rounded-lg">
-                  <Upload className="w-5 h-5 text-amber-600 dark:text-amber-500" />
-                </div>
-                <div className="flex-1">
-                  <span className="block font-medium text-[var(--cc-text)]">Restaurer une sauvegarde</span>
-                  <span className="block text-xs text-[var(--cc-text-muted)] mt-0.5">
-                    {importStatus === 'success' ? (
-                      <span className="text-green-600 dark:text-green-500 font-medium">✅ Restauration réussie !</span>
-                    ) : importStatus === 'error' ? (
-                      <span className="text-[var(--cc-danger)] font-medium">❌ Fichier invalide</span>
-                    ) : (
-                      "Importer un fichier CycleCheck_Backup"
-                    )}
-                  </span>
-                </div>
-              </button>
+              <p className="font-medium text-sm" style={{ color: 'var(--et-text)' }}>Exporter les données</p>
+              <p className="text-xs mt-1" style={{ color: 'var(--et-text-muted)' }}>
+                Télécharge un fichier JSON contenant toutes les catégories, services, employés, équipements et emprunts.
+              </p>
             </div>
-
-            {/* Effacer toutes les données */}
-            <button
-              onClick={() => setShowResetConfirm(true)}
-              className="w-full flex items-center gap-4 p-4 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors text-left"
-            >
-              <div className="bg-red-100 dark:bg-red-900/40 p-2 rounded-lg">
-                <Trash2 className="w-5 h-5 text-[var(--cc-danger)]" />
-              </div>
-              <div className="flex-1">
-                <span className="block font-medium text-[var(--cc-danger)]">Effacer toutes les données</span>
-                <span className="block text-xs text-[var(--cc-text-muted)] mt-0.5">
-                  Supprimer tous les vélos et réinitialiser les pièces
-                </span>
-              </div>
+            <button onClick={handleExport} disabled={exporting} className="btn btn-secondary btn-sm">
+              {exporting ? (
+                <Loader className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Download className="w-3.5 h-3.5" />
+              )}
+              {exporting ? 'Export en cours…' : 'Exporter JSON'}
             </button>
-            
           </div>
-          <p className="px-2 mt-2 text-[11px] text-[var(--cc-text-faint)] text-justify">
-            Important : Vos vélos sont enregistrés uniquement sur ce navigateur. Il n'y a pas de sauvegarde automatique sur le cloud pour le moment. Pensez à exporter vos données régulièrement pour éviter toute perte.
-          </p>
-        </section>
 
-        {/* À propos */}
-        <section>
-          <h2 className="text-xs font-semibold text-[var(--cc-text-faint)] uppercase tracking-wider mb-2 ml-1">À propos</h2>
-          <div className="bg-[var(--cc-surface)] rounded-2xl overflow-hidden shadow-[var(--cc-shadow-sm)] border border-[var(--cc-border)]">
-            <div className="flex items-center gap-4 p-4">
-              <div className="bg-[var(--cc-border-subtle)] p-2 rounded-lg">
-                <Info className="w-5 h-5 text-[var(--cc-text-muted)]" />
-              </div>
-              <div className="flex-1">
-                <span className="block font-medium text-[var(--cc-text)]">Version</span>
-                <span className="block text-sm text-[var(--cc-text-muted)]">CycleCheck 1.0.0</span>
-              </div>
+          <div className="p-4 rounded-xl space-y-3" style={{ background: 'var(--et-surface-2)' }}>
+            <div>
+              <p className="font-medium text-sm" style={{ color: 'var(--et-text)' }}>Importer des données</p>
+              <p className="text-xs mt-1" style={{ color: 'var(--et-text-muted)' }}>
+                Restaure les données depuis un fichier JSON exporté. Les enregistrements existants avec le même ID seront mis à jour (upsert).
+              </p>
             </div>
+            <label className="btn btn-secondary btn-sm cursor-pointer">
+              {importing ? (
+                <Loader className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Upload className="w-3.5 h-3.5" />
+              )}
+              {importing ? 'Import en cours…' : 'Importer JSON'}
+              <input type="file" accept=".json" className="sr-only" onChange={handleImport} disabled={importing} />
+            </label>
+            {importResult && (
+              <div className={`alert ${importResult.startsWith('Erreur') ? 'alert-danger' : 'alert-success'}`}>
+                {importResult}
+              </div>
+            )}
           </div>
-        </section>
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <div className="fade-in">
+      <div className="page-header">
+        <h1 className="page-title">Paramètres</h1>
+        <p className="page-subtitle">Configuration et gestion de l'application</p>
+      </div>
+
+      <div className="px-4 md:px-7 pb-8 space-y-5 max-w-4xl mx-auto">
+        {SECTIONS.map(({ key, icon: Icon, title, color, content }) => (
+          <div key={key} className="card p-5 space-y-4">
+            <div className="flex items-center gap-3">
+              <div
+                className="flex items-center justify-center w-9 h-9 rounded-xl"
+                style={{ background: color + '14' }}
+              >
+                <Icon className="w-4 h-4" style={{ color }} />
+              </div>
+              <h2 className="font-semibold" style={{ color: 'var(--et-text)' }}>{title}</h2>
+            </div>
+            <hr className="divider" />
+            {content}
+          </div>
+        ))}
       </div>
     </div>
   );

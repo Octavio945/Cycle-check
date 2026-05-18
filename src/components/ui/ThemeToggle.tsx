@@ -3,20 +3,24 @@
 import { Sun, Moon } from 'lucide-react';
 import { useTheme } from './ThemeProvider';
 
-export default function ThemeToggle() {
+export function ThemeToggle() {
   const { theme, toggleTheme } = useTheme();
-
   return (
     <button
       onClick={toggleTheme}
-      aria-label={theme === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre'}
-      className="p-2 rounded-xl transition-all text-[var(--cc-text-muted)] hover:text-[var(--cc-text)] hover:bg-[var(--cc-border-subtle)]"
+      aria-label={theme === 'dark' ? 'Mode clair' : 'Mode sombre'}
+      className="flex items-center justify-center w-8 h-8 rounded-lg transition-all"
+      style={{
+        background: 'var(--et-sidebar-hover)',
+        color: 'var(--et-sidebar-text)',
+      }}
     >
-      {theme === 'dark' ? (
-        <Sun className="w-5 h-5 text-amber-400" />
-      ) : (
-        <Moon className="w-5 h-5" />
-      )}
+      {theme === 'dark'
+        ? <Sun className="w-4 h-4 text-amber-400" />
+        : <Moon className="w-4 h-4" />
+      }
     </button>
   );
 }
+
+export default ThemeToggle;
