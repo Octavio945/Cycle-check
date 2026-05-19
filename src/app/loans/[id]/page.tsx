@@ -3,48 +3,73 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowLeft, CheckCircle2, Clock, User, FileText } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Clock, User, FileText, ChevronsDown } from 'lucide-react';
 import { getLoan, returnLoan } from '@/lib/supabase';
 import type { Loan, LoanItem, ReturnCondition } from '@/types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-const STATUS_LABELS = { available: 'Disponible', borrowed: 'Emprunté', broken: 'En panne', maintenance: 'En maintenance' };
-const STATUS_BADGE: Record<string, string> = { available: 'badge badge-available', borrowed: 'badge badge-borrowed', broken: 'badge badge-broken', maintenance: 'badge badge-maintenance' };
-const RETURN_LABELS: Record<ReturnCondition, string> = { good: 'Bon état', broken: 'En panne', damaged: 'Endommagé' };
+const STATUS_LABELS = {
+  available: 'Disponible', borrowed: 'Emprunté',
+  broken: 'En panne', maintenance: 'En maintenance',
+};
+const STATUS_BADGE: Record<string, string> = {
+  available: 'badge badge-available', borrowed: 'badge badge-borrowed',
+  broken: 'badge badge-broken', maintenance: 'badge badge-maintenance',
+};
+const RETURN_LABELS: Record<ReturnCondition, string> = {
+  good: 'Bon état', broken: 'En panne', damaged: 'Endommagé',
+};
 
 export default function LoanDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [loan, setLoan] = useState<Loan | null>(null);
   const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
+
+  // Return form state
   const [returnConditions, setReturnConditions] = useState<Record<string, ReturnCondition>>({});
   const [returnNotes, setReturnNotes] = useState('');
+  // Editable return date/time (initialised on load, not on render)
+  const [returnDate, setReturnDate] = useState('');
+  const [returnTime, setReturnTime] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-
-  const now = new Date();
-  const returnDate = format(now, 'yyyy-MM-dd');
-  const returnTime = format(now, 'HH:mm');
+  const [success, setSuccess] = useState(false);
 
   const load = async () => {
     setLoading(true);
     try {
       const l = await getLoan(id);
       setLoan(l);
-      if (l.status === 'active' && l.items) {
-        const initial: Record<string, ReturnCondition> = {};
-        for (const item of l.items) initial[item.equipment_id] = 'good';
-        setReturnConditions(initial);
+      if (l.status === 'active') {
+        // Set editable date/time to NOW at load time — user can change it
+        const now = new Date();
+        setReturnDate(format(now, 'yyyy-MM-dd'));
+        setReturnTime(format(now, 'HH:mm'));
+        if (l.items) {
+          const initial: Record<string, ReturnCondition> = {};
+          for (const item of l.items) initial[item.equipment_id] = 'good';
+          setReturnConditions(initial);
+        }
       }
-    } catch (e) {
-      console.error(e);
+    } catch {
+      setNotFound(true);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => { load(); }, [id]);
+
+  // Apply same condition to all items at once
+  const applyToAll = (condition: ReturnCondition) => {
+    if (!loan?.items) return;
+    const all: Record<string, ReturnCondition> = {};
+    for (const item of loan.items) all[item.equipment_id] = condition;
+    setReturnConditions(all);
+  };
 
   const handleReturn = async () => {
     if (!loan?.items) return;
@@ -53,7 +78,7 @@ export default function LoanDetailPage() {
     try {
       const updated = await returnLoan(id, {
         return_date: returnDate,
-        return_time: returnTime,
+        return_time: returnTime + ':00',
         return_notes: returnNotes.trim() || undefined,
         items: loan.items.map(item => ({
           equipment_id: item.equipment_id,
@@ -61,6 +86,7 @@ export default function LoanDetailPage() {
         })),
       });
       setLoan(updated);
+      setSuccess(true);
     } catch (e: unknown) {
       setError('Erreur lors du retour : ' + (e instanceof Error ? e.message : String(e)));
     } finally {
@@ -68,6 +94,7 @@ export default function LoanDetailPage() {
     }
   };
 
+  // ── Loading ──
   if (loading) {
     return (
       <div className="flex items-center justify-center" style={{ minHeight: '60vh' }}>
@@ -76,15 +103,31 @@ export default function LoanDetailPage() {
     );
   }
 
-  if (!loan) return null;
+  // ── Not found ──
+  if (notFound || !loan) {
+    return (
+      <div className="fade-in px-4 md:px-7 pt-8">
+        <div className="card p-8 text-center">
+          <p className="text-lg font-semibold" style={{ color: 'var(--et-text)' }}>Emprunt introuvable</p>
+          <p className="text-sm mt-2" style={{ color: 'var(--et-text-muted)' }}>
+            Cet emprunt n&apos;existe pas ou a été supprimé.
+          </p>
+          <Link href="/loans" className="btn btn-primary btn-sm mt-4">
+            <ArrowLeft className="w-4 h-4" /> Retour aux emprunts
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   const isActive = loan.status === 'active';
 
   return (
     <div className="fade-in">
+      {/* ── Header ── */}
       <div className="page-header flex items-start justify-between flex-wrap gap-3">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.back()} className="btn btn-ghost btn-icon">
+          <button onClick={() => router.push('/loans')} className="btn btn-ghost btn-icon">
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div>
@@ -102,12 +145,24 @@ export default function LoanDetailPage() {
       </div>
 
       <div className="px-4 md:px-7 pb-8 space-y-5">
-        {/* Employee info */}
+
+        {/* ── Succès ── */}
+        {success && (
+          <div className="alert alert-success flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0" />
+            Retour enregistré avec succès.
+          </div>
+        )}
+
+        {/* ── Employé + Détails ── */}
         <div className="grid md:grid-cols-2 gap-5">
           <div className="card p-5">
             <p className="section-label">Employé</p>
             <div className="flex items-center gap-3 mt-3">
-              <div className="flex items-center justify-center w-12 h-12 rounded-full text-base font-bold text-white shrink-0" style={{ background: 'var(--et-primary)' }}>
+              <div
+                className="flex items-center justify-center w-12 h-12 rounded-full text-base font-bold text-white shrink-0"
+                style={{ background: 'var(--et-primary)' }}
+              >
                 {loan.employee?.name?.charAt(0).toUpperCase() ?? '?'}
               </div>
               <div>
@@ -130,7 +185,7 @@ export default function LoanDetailPage() {
           </div>
 
           <div className="card p-5 space-y-3">
-            <p className="section-label">Détails de l'emprunt</p>
+            <p className="section-label">Détails</p>
             <div className="space-y-2">
               {[
                 { icon: Clock, label: 'Emprunt', value: `${format(new Date(loan.checkout_date), 'dd/MM/yyyy', { locale: fr })} à ${loan.checkout_time}` },
@@ -150,7 +205,7 @@ export default function LoanDetailPage() {
           </div>
         </div>
 
-        {/* Items table */}
+        {/* ── Table équipements ── */}
         <div className="card">
           <div className="p-4" style={{ borderBottom: '1px solid var(--et-border)' }}>
             <p className="section-label mb-0">Équipements empruntés ({loan.items?.length ?? 0})</p>
@@ -160,10 +215,10 @@ export default function LoanDetailPage() {
               <thead>
                 <tr>
                   <th>Numéro</th>
-                  <th>Catégorie</th>
-                  <th>N° de série</th>
+                  <th className="hidden sm:table-cell">Catégorie</th>
+                  <th className="hidden md:table-cell">N° de série</th>
                   <th>Statut actuel</th>
-                  {!isActive && <th>Condition retour</th>}
+                  {!isActive && <th>État retour</th>}
                 </tr>
               </thead>
               <tbody>
@@ -174,13 +229,13 @@ export default function LoanDetailPage() {
                         {item.equipment?.category?.code}-{item.equipment?.display_number}
                       </Link>
                     </td>
-                    <td>
+                    <td className="hidden sm:table-cell">
                       <div className="flex items-center gap-1.5">
                         <span>{item.equipment?.category?.icon}</span>
                         <span style={{ color: 'var(--et-text-secondary)' }}>{item.equipment?.category?.name ?? '—'}</span>
                       </div>
                     </td>
-                    <td style={{ color: 'var(--et-text-muted)', fontFamily: 'monospace', fontSize: '0.8rem' }}>
+                    <td className="hidden md:table-cell" style={{ color: 'var(--et-text-muted)', fontFamily: 'monospace', fontSize: '0.8rem' }}>
                       {item.equipment?.serial_number || '—'}
                     </td>
                     <td>
@@ -209,9 +264,9 @@ export default function LoanDetailPage() {
           </div>
         </div>
 
-        {/* Return section */}
+        {/* ── Traitement du retour ── */}
         {isActive && (
-          <div className="card p-5 space-y-4">
+          <div className="card p-5 space-y-5">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-5 h-5" style={{ color: 'var(--et-success)' }} />
               <p className="section-label mb-0" style={{ color: 'var(--et-success-text)' }}>Traiter le retour</p>
@@ -219,39 +274,89 @@ export default function LoanDetailPage() {
 
             {error && <div className="alert alert-danger">{error}</div>}
 
-            <div className="grid sm:grid-cols-2 gap-3 p-4 rounded-xl" style={{ background: 'var(--et-surface-2)' }}>
+            {/* Date et heure — éditables */}
+            <div className="grid sm:grid-cols-2 gap-4">
               <div>
-                <p className="et-label">Date de retour</p>
-                <p className="text-sm font-medium" style={{ color: 'var(--et-text)' }}>{format(now, 'dd MMMM yyyy', { locale: fr })}</p>
+                <label className="et-label">Date de retour</label>
+                <input
+                  type="date"
+                  className="et-input"
+                  value={returnDate}
+                  onChange={e => setReturnDate(e.target.value)}
+                  max={format(new Date(), 'yyyy-MM-dd')}
+                />
               </div>
               <div>
-                <p className="et-label">Heure de retour</p>
-                <p className="text-sm font-medium" style={{ color: 'var(--et-text)' }}>{returnTime}</p>
+                <label className="et-label">Heure de retour</label>
+                <input
+                  type="time"
+                  className="et-input"
+                  value={returnTime}
+                  onChange={e => setReturnTime(e.target.value)}
+                />
               </div>
             </div>
 
-            <div className="space-y-3">
-              <p className="et-label">État de retour par équipement</p>
-              {loan.items?.map(item => (
-                <div key={item.id} className="flex items-center gap-3 flex-wrap p-3 rounded-xl" style={{ background: 'var(--et-surface-2)' }}>
-                  <span className="eq-number">{item.equipment?.category?.code}-{item.equipment?.display_number}</span>
-                  <span className="text-sm" style={{ color: 'var(--et-text-secondary)' }}>{item.equipment?.category?.name}</span>
-                  <select
-                    className="et-select ml-auto"
-                    style={{ width: 'auto', minWidth: '160px' }}
-                    value={returnConditions[item.equipment_id] ?? 'good'}
-                    onChange={e => setReturnConditions(prev => ({ ...prev, [item.equipment_id]: e.target.value as ReturnCondition }))}
-                  >
-                    <option value="good">Bon état</option>
-                    <option value="damaged">Endommagé</option>
-                    <option value="broken">En panne</option>
-                  </select>
-                </div>
-              ))}
-            </div>
-
+            {/* État de retour par équipement */}
             <div>
-              <label className="et-label">Notes de retour <span style={{ color: 'var(--et-text-muted)', fontWeight: 400 }}>(optionnel)</span></label>
+              <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                <p className="et-label mb-0">État de retour par équipement</p>
+                {/* Appliquer à tous */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-xs" style={{ color: 'var(--et-text-muted)' }}>Appliquer à tous :</span>
+                  {(['good', 'damaged', 'broken'] as ReturnCondition[]).map(c => (
+                    <button
+                      key={c}
+                      onClick={() => applyToAll(c)}
+                      className="btn btn-ghost btn-sm flex items-center gap-1"
+                      style={{ padding: '0.25rem 0.5rem' }}
+                    >
+                      <ChevronsDown className="w-3 h-3" />
+                      <span className={
+                        c === 'good' ? 'badge badge-good' :
+                        c === 'broken' ? 'badge badge-broken' : 'badge badge-fair'
+                      } style={{ fontSize: '0.65rem', padding: '0.1rem 0.4rem' }}>
+                        {RETURN_LABELS[c]}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                {loan.items?.map(item => (
+                  <div
+                    key={item.id}
+                    className="flex items-center gap-3 flex-wrap p-3 rounded-xl"
+                    style={{ background: 'var(--et-surface-2)' }}
+                  >
+                    <span className="eq-number">{item.equipment?.category?.code}-{item.equipment?.display_number}</span>
+                    <span className="text-sm hidden sm:inline" style={{ color: 'var(--et-text-secondary)' }}>
+                      {item.equipment?.category?.name}
+                    </span>
+                    <select
+                      className="et-select ml-auto"
+                      style={{ width: 'auto', minWidth: '150px' }}
+                      value={returnConditions[item.equipment_id] ?? 'good'}
+                      onChange={e => setReturnConditions(prev => ({
+                        ...prev,
+                        [item.equipment_id]: e.target.value as ReturnCondition,
+                      }))}
+                    >
+                      <option value="good">✅ Bon état</option>
+                      <option value="damaged">⚠️ Endommagé</option>
+                      <option value="broken">❌ En panne</option>
+                    </select>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Notes */}
+            <div>
+              <label className="et-label">
+                Notes de retour <span style={{ color: 'var(--et-text-muted)', fontWeight: 400 }}>(optionnel)</span>
+              </label>
               <textarea
                 className="et-textarea"
                 placeholder="Observations lors du retour…"
@@ -274,7 +379,7 @@ export default function LoanDetailPage() {
           </div>
         )}
 
-        {/* Return info if already returned */}
+        {/* ── Retour déjà effectué ── */}
         {!isActive && loan.return_date && (
           <div className="card p-5 space-y-3">
             <div className="flex items-center gap-2">
@@ -285,7 +390,7 @@ export default function LoanDetailPage() {
               <div className="p-3 rounded-xl" style={{ background: 'var(--et-success-bg)' }}>
                 <p className="text-xs" style={{ color: 'var(--et-success-text)' }}>Date de retour</p>
                 <p className="font-semibold text-sm mt-1" style={{ color: 'var(--et-success-text)' }}>
-                  {format(new Date(loan.return_date), 'dd/MM/yyyy', { locale: fr })} à {loan.return_time}
+                  {format(new Date(loan.return_date), 'dd/MM/yyyy', { locale: fr })} à {loan.return_time?.slice(0, 5)}
                 </p>
               </div>
               {loan.return_notes && (
